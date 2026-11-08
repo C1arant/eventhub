@@ -9,7 +9,7 @@ import { getEvent, listDays } from '#lib/server/events.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
 import {
-	assign, assignmentInEvent, callTimeField, createLinkFor, guestLinkInEvent, inviteEligibility, listEventPeople, listGuestLinks, setDayCallTime,
+	assign, assignmentInEvent, callTimeField, createLinkFor, guestLinkInEvent, inviteEligibility, linkLogin, listEventPeople, listGuestLinks, setDayCallTime,
 	unassign, updateAssignment
 } from '#lib/server/people.js';
 import { people } from '#lib/server/db/schema.js';
@@ -151,6 +151,10 @@ export const actions = {
 		const key = `invite${a.id}`;
 		const el = inviteEligibility(db, a.personId);
 		if (!el.ok) return fail(400, { form: key, errors: { _form: el.reason }, values });
+		if (el.linkUserId !== undefined) {
+			if (!linkLogin(db, a.personId, el.linkUserId)) return fail(400, { form: key, errors: { _form: 'A user with this email already exists' }, values });
+			return { form: key, linked: true };
+		}
 		const token = createInvite(db, { email: el.email, personId: a.personId }, Date.now());
 		return { form: key, newInvite: `${url.origin}/invite/${token}`, inviteEmail: el.email };
 	}

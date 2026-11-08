@@ -98,6 +98,9 @@
 							{#if !a.email}<span class="ml-2 text-xs text-slate-500">Needs an email address.</span>{/if}
 						</form>
 						{#each Object.values(err(`invite${a.assignmentId}`) ?? {}) as m (m)}<p class="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">{m}</p>{/each}
+						{#if form?.form === `invite${a.assignmentId}` && form.linked}
+							<p class="mt-1 text-sm text-emerald-700 dark:text-emerald-400" role="status">Linked existing login</p>
+						{/if}
 						{#if form?.form === `invite${a.assignmentId}` && form.newInvite}
 							{@render revealed(form.newInvite, `invite${a.assignmentId}`, `Invite for ${form.inviteEmail}.`)}
 						{/if}

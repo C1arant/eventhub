@@ -1,41 +1,14 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
-	import Field from '#lib/components/Field.svelte';
-
-	let { data, form } = $props();
-	let copied = $state(false);
-
-	async function copy() {
-		try {
-			await navigator.clipboard.writeText(form?.inviteLink ?? '');
-			copied = true;
-			setTimeout(() => (copied = false), 2000);
-		} catch {
-			/* clipboard unavailable; the link is selectable */
-		}
-	}
+	let { data } = $props();
 </script>
 
 <svelte:head><title>Settings · EventHub</title></svelte:head>
 
 <h1 class="text-2xl font-bold">Settings</h1>
 
-<section class="mt-6 space-y-3">
+<section class="mt-6 space-y-1">
 	<h2 class="text-lg font-semibold">Invite crew</h2>
-	<form method="POST" action="?/invite" use:enhance={() => async ({ update }) => { copied = false; await update({ reset: false }); }} class="max-w-sm space-y-3">
-		<Field label="Crew member's email" name="email" type="email" value={form?.email} error={form?.errors?.email} />
-		<button class="btn-primary">Create invite link</button>
-	</form>
-	{#if form?.inviteLink}
-		<div class="max-w-xl rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-			<p class="text-sm">Invite for {form.inviteEmail}. Share this link; it is shown only once and expires in 7 days.</p>
-			<div class="mt-2 flex gap-2">
-				<input readonly value={form.inviteLink} aria-label="Invite link" onfocus={(e) => e.currentTarget.select()}
-					class="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900" />
-				<button type="button" class="btn-secondary" onclick={copy}>{copied ? 'Copied' : 'Copy'}</button>
-			</div>
-		</div>
-	{/if}
+	<p class="text-sm text-slate-600 dark:text-slate-400">Invite crew from an event's People tab: assign them, then use "Send crew invite".</p>
 </section>
 
 <section class="mt-8">

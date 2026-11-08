@@ -7,7 +7,7 @@ import { createEvent, eventInput, listDays } from '../../src/lib/server/events';
 import { hashToken } from '../../src/lib/server/util/tokens';
 import {
 	assign, assignmentInEvent, callSheet, contactEligible, createLinkFor, createPerson, deletePerson,
-	getPerson, guestLinkInEvent, inviteEligibility, listEventPeople, listGuestLinks, personInput, setDayCallTime
+	getPerson, guestLinkInEvent, inviteEligibility, linkLogin, listEventPeople, listGuestLinks, personInput, setDayCallTime
 } from '../../src/lib/server/people';
 
 type Db = ReturnType<typeof createTestDb>;
@@ -109,6 +109,32 @@ describe('ownership and eligibility checks', () => {
 		assign(db, e, ok, { eventRole: '' });
 		const byName = Object.fromEntries(listEventPeople(db, e, { includePrivate: true }).map((p) => [p.name, p.hasLogin]));
 		expect(byName).toEqual({ Login: true, Ok: false });
+	});
+});
+
+describe('linking an orphaned crew login', () => {
+	it('links an unlinked crew login with the same email (case-insensitive), once', () => {
+		const db = createTestDb();
+		const p = person(db, 'Pat', { email: 'Pat@X.dev' });
+		const uid = db.insert(users).values({ email: 'pat@x.dev', name: 'Pat', passwordHash: 'x', role: 'crew', personId: null, createdAt: 0 }).returning({ id: users.id }).get().id;
+		const el = inviteEligibility(db, p);
+		expect(el).toMatchObject({ ok: true, linkUserId: uid });
+		expect(linkLogin(db, p, uid)).toBe(true);
+		expect(db.select().from(users).where(eq(users.id, uid)).get()!.personId).toBe(p);
+		expect(inviteEligibility(db, p)).toMatchObject({ ok: false, reason: expect.stringContaining('already has a login') });
+	});
+	it('refuses a user linked to a different person, and never links owners', async () => {
+		const db = createTestDb();
+		const other = person(db, 'Other');
+		const p = person(db, 'Pat', { email: 'pat@x.dev' });
+		const q = person(db, 'Own', { email: 'own@x.dev' });
+		const uid = db.insert(users).values({ email: 'pat@x.dev', name: 'Pat', passwordHash: 'x', role: 'crew', personId: other, createdAt: 0 }).returning({ id: users.id }).get().id;
+		expect(inviteEligibility(db, p)).toMatchObject({ ok: false, reason: expect.stringContaining('already exists') });
+		expect(linkLogin(db, p, uid)).toBe(false);
+		await createOwner(db, { name: 'Owner', email: 'own@x.dev', password: 'a-long-test-password' });
+		expect(inviteEligibility(db, q)).toMatchObject({ ok: false, reason: expect.stringContaining('already exists') });
+		const ownerId = db.select().from(users).where(eq(users.role, 'owner')).get()!.id;
+		expect(linkLogin(db, q, ownerId)).toBe(false);
 	});
 });
 

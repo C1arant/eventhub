@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createGuestLink } from './auth/guests';
 import type { DB } from './db';
@@ -296,18 +296,32 @@ export function contactEligible(db: DB, eventId: number, personId: number): bool
 		.get();
 }
 
-export type InviteEligibility = { ok: true; email: string } | { ok: false; reason: string };
+export type InviteEligibility =
+	| { ok: true; email: string; /** An existing unlinked crew login with this email: link it instead of inviting. */ linkUserId?: number }
+	| { ok: false; reason: string };
 
-/** Whether a crew invite may be created for this person. */
+/** Whether a crew invite may be created for this person (or an orphaned crew login linked). */
 export function inviteEligibility(db: DB, personId: number): InviteEligibility {
 	const p = db.select().from(people).where(eq(people.id, personId)).get();
 	if (!p) return { ok: false, reason: 'Person not found' };
 	if (db.select({ id: users.id }).from(users).where(eq(users.personId, personId)).get())
 		return { ok: false, reason: 'This person already has a login' };
 	if (!p.email) return { ok: false, reason: 'Add an email address to this person first' };
-	if (db.select({ id: users.id }).from(users).where(eq(users.email, p.email.trim().toLowerCase())).get())
+	const existing = db.select().from(users).where(sql`lower(${users.email}) = ${p.email.trim().toLowerCase()}`).get();
+	if (existing) {
+		// Only an orphaned crew login (e.g. its person was deleted) may be re-linked; owners and
+		// logins already tied to another person never are.
+		if (existing.role === 'crew' && existing.personId === null) return { ok: true, email: p.email, linkUserId: existing.id };
 		return { ok: false, reason: 'A user with this email already exists' };
+	}
 	return { ok: true, email: p.email };
+}
+
+/** Attach an orphaned crew login to a person. Returns false if the user is not an unlinked crew login. */
+export function linkLogin(db: DB, personId: number, userId: number): boolean {
+	return (
+		db.update(users).set({ personId }).where(and(eq(users.id, userId), eq(users.role, 'crew'), isNull(users.personId))).run().changes === 1
+	);
 }
 
 /** Create a guest link, returning the raw token (never stored). expiresAt undefined = default expiry. */
