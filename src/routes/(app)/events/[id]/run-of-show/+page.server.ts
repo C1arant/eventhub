@@ -5,7 +5,7 @@ import { getDb } from '#lib/server/db/index.js';
 import { getEvent, listDays } from '#lib/server/events.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
-import { deleteItemLive } from '#lib/server/live/store.js';
+import { deleteItemLive, getLive, notifyLive } from '#lib/server/live/store.js';
 import {
 	addItem, computeTimes, dayInEvent, itemIndex, itemInEvent, listItems, moveItem, reorderItems,
 	ROS_TYPES, rosItemInput, updateItem
@@ -57,6 +57,7 @@ export const actions = {
 		const p = rosItemInput.safeParse(values);
 		if (!p.success) return fail(400, { form: 'add', errors: fieldErrors(p.error), values });
 		addItem(db, day.id, p.data);
+		notifyLive(db, day.id);
 		return { form: 'add', saved: true };
 	},
 	update: async ({ locals, params, request }) => {
@@ -67,6 +68,7 @@ export const actions = {
 		const p = rosItemInput.safeParse(values);
 		if (!p.success) return fail(400, { form: `item${item.id}`, errors: fieldErrors(p.error), values });
 		updateItem(db, item.id, p.data);
+		notifyLive(db, item.dayId);
 		return { form: `item${item.id}`, saved: true };
 	},
 	move: async ({ locals, params, request }) => {
@@ -77,6 +79,7 @@ export const actions = {
 		const dir = z.enum(['up', 'down']).safeParse(values.dir);
 		if (!dir.success) return fail(400, { form: `item${item.id}`, errors: { dir: 'Invalid direction' }, values });
 		moveItem(db, item.id, itemIndex(db, item.id) + (dir.data === 'up' ? -1 : 1));
+		notifyLive(db, item.dayId);
 		return { form: `item${item.id}`, saved: true };
 	},
 	/** Drag-and-drop: the full new order of a day as a JSON array of item ids. */
@@ -88,6 +91,7 @@ export const actions = {
 		const parsed = z.array(z.number().int().positive()).max(1000).safeParse(safeJson(values.order));
 		if (!parsed.success) return fail(400, { form: 'reorder', errors: { order: 'Invalid order' }, values });
 		if (!reorderItems(db, day.id, parsed.data)) return fail(409, { form: 'reorder', errors: { order: 'The list changed; reload and try again' }, values });
+		notifyLive(db, day.id);
 		return { form: 'reorder', saved: true };
 	},
 	delete: async ({ locals, params, request }) => {
@@ -95,6 +99,10 @@ export const actions = {
 		const values = formObject(await request.formData());
 		const item = itemInEvent(db, id, idOf(values.itemId));
 		if (!item) error(404, 'Item not found');
+		// Deleting the item being run moves the show on, which only the show caller (or owner) may do.
+		const live = getLive(db, item.dayId);
+		if ((live.status === 'running' || live.status === 'held') && live.currentItemId === item.id && !can(db, locals.actor, 'live:control', { dayId: item.dayId }))
+			return fail(403, { form: `item${item.id}`, errors: { _form: 'This item is on air. Only the show caller can delete it right now.' }, values });
 		deleteItemLive(db, item.id);
 		return { form: 'delete', saved: true };
 	}
