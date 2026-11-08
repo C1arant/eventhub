@@ -5,8 +5,9 @@ import { getDb } from '#lib/server/db/index.js';
 import { getEvent, listDays } from '#lib/server/events.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
+import { deleteItemLive } from '#lib/server/live/store.js';
 import {
-	addItem, computeTimes, dayInEvent, deleteItem, itemIndex, itemInEvent, listItems, moveItem, reorderItems,
+	addItem, computeTimes, dayInEvent, itemIndex, itemInEvent, listItems, moveItem, reorderItems,
 	ROS_TYPES, rosItemInput, updateItem
 } from '#lib/server/ros.js';
 
@@ -94,7 +95,7 @@ export const actions = {
 		const values = formObject(await request.formData());
 		const item = itemInEvent(db, id, idOf(values.itemId));
 		if (!item) error(404, 'Item not found');
-		deleteItem(db, item.id);
+		deleteItemLive(db, item.id);
 		return { form: 'delete', saved: true };
 	}
 };
