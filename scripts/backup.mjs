@@ -1,5 +1,5 @@
 // Consistent online backup: SQLite via better-sqlite3 .backup() + a copy of data/uploads.
-// Run: docker compose exec app node scripts/backup.mjs   (or locally: node scripts/backup.mjs)
+// Run: docker compose exec -u node app node scripts/backup.mjs   (or locally: node scripts/backup.mjs)
 import Database from 'better-sqlite3';
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';

@@ -30,9 +30,11 @@ Either `git clone <your-own-remote-url> ~/eventhub`, or copy the project folder 
 cd ~/eventhub
 mkdir -p data backups
 cp .env.example .env
-$EDITOR .env          # set PUBLIC_URL, ADDRESS_HEADER (see below), tunnel secrets
+$EDITOR .env          # set PUBLIC_URL, TZ, ADDRESS_HEADER (see below), tunnel secrets
 docker compose up -d --build
 ```
+
+Set `TZ` in `.env` to the time zone where your events happen, for example `TZ=Europe/London` (the default). It drives live-mode timings and over/under, the times in reports, when guest links expire, and what counts as "today" on the dashboard. A wrong value shifts all of these.
 
 Open <http://localhost:3000/setup> and create the owner account. There are no default credentials. Check health with `curl localhost:3000/healthz` (prints `ok`) or `docker compose ps` (should say healthy).
 
