@@ -9,6 +9,7 @@
 		{ href: base, label: 'Overview' },
 		{ href: `${base}/tasks`, label: 'Tasks' },
 		{ href: `${base}/people`, label: 'People' },
+		{ href: `${base}/callsheet`, label: 'Call sheet' },
 		{ href: `${base}/run-of-show`, label: 'Run-of-show' },
 		{ href: `${base}/files`, label: 'Files' }
 	]);

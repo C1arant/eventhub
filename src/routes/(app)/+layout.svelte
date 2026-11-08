@@ -7,7 +7,7 @@
 	const links = $derived([
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/events', label: 'Events' },
-		{ href: '/people', label: 'People' },
+		...(data.user.role === 'owner' ? [{ href: '/people', label: 'People' }] : []),
 		{ href: '/tasks', label: 'My tasks' },
 		...(data.user.role === 'owner' ? [{ href: '/settings', label: 'Settings' }] : [])
 	]);
