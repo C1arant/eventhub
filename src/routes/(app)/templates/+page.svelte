@@ -10,7 +10,7 @@
 	<h1 class="text-2xl font-bold">Templates</h1>
 	<a href="/events/new" class="btn-primary">New event</a>
 </div>
-<p class="mt-1 text-sm text-slate-500">Templates copy days, run-of-show and tasks. People, files and notes are never copied.</p>
+<p class="mt-1 text-sm text-slate-500">Tasks, sections, days and run-of-show are saved. Assigned people and files aren't copied.</p>
 {#if form?.error}<p class="mt-2 text-sm text-red-600" role="alert">{form.error}</p>{/if}
 
 {#if data.templates.length === 0}
@@ -26,7 +26,7 @@
 						{#if t.broken}<span class="text-red-600"> · damaged, cannot be used</span>{:else} · {t.dayCount} {t.dayCount === 1 ? 'day' : 'days'} · {t.taskCount} tasks{/if}
 					</p>
 				</div>
-				<form method="POST" action="?/delete" use:enhance onsubmit={(e) => { if (!confirm(`Delete template "${t.name}"?`)) e.preventDefault(); }}>
+				<form method="POST" action="?/delete" use:enhance={({ cancel }) => { if (!confirm(`Delete template "${t.name}"?`)) cancel(); }}>
 					<input type="hidden" name="id" value={t.id} />
 					<button class="btn-secondary text-red-600">Delete</button>
 				</form>

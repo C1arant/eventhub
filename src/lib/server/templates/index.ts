@@ -71,7 +71,7 @@ export function saveAsTemplate(db: DB, eventId: number, name: string): number {
 			items: listItems(db, d.id).map((i) =>
 				rosItemInput.parse({
 					title: i.title,
-					durationMin: i.durationSec / 60,
+					durationMin: Math.max(1, Math.round(i.durationSec / 60)),
 					type: i.type,
 					hardStart: i.hardStart,
 					people: i.people,

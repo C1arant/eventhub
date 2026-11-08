@@ -18,7 +18,7 @@ export const STARTERS: Starter[] = [
 		data: {
 			spanDays: 0,
 			days: [{
-				label: 'Show', offsetDays: 0, startTime: '17:00',
+				label: 'Show', offsetDays: 0, startTime: '16:00',
 				items: [
 					item('Load in', 60, 'other', { people: 'Crew', notesStage: 'Backline on stage' }),
 					item('Soundcheck', 90, 'other', { notesSound: 'Headliner first, support after' }),

@@ -62,7 +62,7 @@
 {#if data.canTemplate}
 	<section class="mt-8">
 		<h2 class="text-lg font-semibold">Save as template</h2>
-		<p class="text-sm text-slate-500">Copies days, run-of-show and tasks. People, files and notes are not copied.</p>
+		<p class="text-sm text-slate-500">Tasks, sections, days and run-of-show are saved. Assigned people and files aren't copied.</p>
 		<form method="POST" action="?/saveTemplate" use:enhance class="mt-2 flex flex-wrap items-end gap-2">
 			<label class="min-w-48 flex-1"><span class="block text-xs text-slate-500">Template name</span><input name="templateName" required value={ev.name} class="w-full {input}" /></label>
 			<button class="btn-secondary">Save as template</button>

@@ -5,7 +5,7 @@ import {
 } from '#lib/server/events.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
-import { saveAsTemplate } from '#lib/server/templates/index.js';
+import { saveAsTemplate, TemplateError } from '#lib/server/templates/index.js';
 import { z } from 'zod';
 
 const eid = (p: { id: string }) => Number(p.id);
@@ -35,7 +35,12 @@ export const actions = {
 		requireActor(locals, 'event:create');
 		const parsed = z.object({ templateName: z.string().trim().min(1, 'Name is required').max(200) }).safeParse(formObject(await request.formData()));
 		if (!parsed.success) return fail(400, { form: 'template', errors: fieldErrors(parsed.error) });
-		saveAsTemplate(getDb(), eid(params), parsed.data.templateName);
+		try {
+			saveAsTemplate(getDb(), eid(params), parsed.data.templateName);
+		} catch (e) {
+			if (e instanceof TemplateError) return fail(404, { form: 'template', errors: { _form: e.message } });
+			throw e;
+		}
 		return { form: 'template', saved: true };
 	},
 	addDay: async ({ locals, params, request }) => {

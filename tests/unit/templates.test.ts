@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import { addDay, createEvent, eventInput, getEvent, listDays } from '../../src/lib/server/events';
 import { addSection, addTask, listTasksBySection, taskInput } from '../../src/lib/server/tasks';
-import { addItem, listItems, rosItemInput } from '../../src/lib/server/ros';
+import { addItem, computeTimes, listItems, rosItemInput } from '../../src/lib/server/ros';
 import { assignments, people, templates } from '../../src/lib/server/db/schema';
 import { EVENT_TYPES } from '../../src/lib/event-meta';
 import {
@@ -101,6 +101,26 @@ describe('templates', () => {
 		const total = club.items.reduce((n, i) => n + i.durationMin, 0);
 		const [h, m] = club.startTime.split(':').map(Number);
 		expect(h * 60 + m + total).toBeGreaterThan(1440);
+	});
+
+	it('no starter produces a timing conflict on any day', () => {
+		const db = createTestDb();
+		seedStarters(db);
+		for (const t of listTemplates(db)) {
+			const id = instantiateTemplate(db, t.id, { name: t.name, startDate: '2026-12-01' });
+			for (const d of listDays(db, id)) {
+				expect(computeTimes(d.startTime, listItems(db, d.id)).every((x) => !x.conflict), `${t.name} / ${d.label}`).toBe(true);
+			}
+		}
+	});
+
+	it('saveAsTemplate rounds odd durations and rejects a missing event with TemplateError', () => {
+		const db = createTestDb();
+		expect(() => saveAsTemplate(db, 9999, 'x')).toThrow(TemplateError);
+		const id = createEvent(db, eventInput.parse({ name: 'E', type: 'gig', startDate: '2026-01-01', endDate: '2026-01-01' }));
+		addItem(db, listDays(db, id)[0].id, rosItemInput.parse({ title: 'A', durationMin: 5 }));
+		db.run(sql`update ros_items set duration_sec = 330`);
+		expect(() => saveAsTemplate(db, id, 'ok')).not.toThrow();
 	});
 
 	it('a corrupt template gives a friendly TemplateError, not a crash', () => {
