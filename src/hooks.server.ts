@@ -1,10 +1,16 @@
 import { redirect } from '@sveltejs/kit';
-import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
+import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '#lib/server/auth/can.js';
 import { actorFromSession } from '#lib/server/auth/session-actor.js';
 import { hasOwner } from '#lib/server/auth/users.js';
 import { getDb } from '#lib/server/db/index.js';
+import { seedStarters } from '#lib/server/templates/starters.js';
+
+// Runs once per server process, before the first request.
+export const init: ServerInit = () => {
+	seedStarters(getDb());
+};
 
 const ANON: Actor = { kind: 'anon' };
 

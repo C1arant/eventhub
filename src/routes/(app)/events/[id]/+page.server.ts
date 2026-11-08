@@ -5,10 +5,15 @@ import {
 } from '#lib/server/events.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
+import { saveAsTemplate } from '#lib/server/templates/index.js';
+import { z } from 'zod';
 
 const eid = (p: { id: string }) => Number(p.id);
 
-export const load = ({ params }) => ({ days: listDays(getDb(), eid(params)) });
+export const load = ({ locals, params }) => ({
+	days: listDays(getDb(), eid(params)),
+	canTemplate: locals.actor.kind === 'owner'
+});
 
 export const actions = {
 	update: async ({ locals, params, request }) => {
@@ -25,6 +30,13 @@ export const actions = {
 		requireActor(locals, 'event:edit', { eventId: id });
 		deleteEvent(getDb(), id);
 		redirect(303, '/events');
+	},
+	saveTemplate: async ({ locals, params, request }) => {
+		requireActor(locals, 'event:create');
+		const parsed = z.object({ templateName: z.string().trim().min(1, 'Name is required').max(200) }).safeParse(formObject(await request.formData()));
+		if (!parsed.success) return fail(400, { form: 'template', errors: fieldErrors(parsed.error) });
+		saveAsTemplate(getDb(), eid(params), parsed.data.templateName);
+		return { form: 'template', saved: true };
 	},
 	addDay: async ({ locals, params, request }) => {
 		const id = eid(params);

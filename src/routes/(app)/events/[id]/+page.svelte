@@ -59,6 +59,19 @@
 	{/if}
 </section>
 
+{#if data.canTemplate}
+	<section class="mt-8">
+		<h2 class="text-lg font-semibold">Save as template</h2>
+		<p class="text-sm text-slate-500">Copies days, run-of-show and tasks. People, files and notes are not copied.</p>
+		<form method="POST" action="?/saveTemplate" use:enhance class="mt-2 flex flex-wrap items-end gap-2">
+			<label class="min-w-48 flex-1"><span class="block text-xs text-slate-500">Template name</span><input name="templateName" required value={ev.name} class="w-full {input}" /></label>
+			<button class="btn-secondary">Save as template</button>
+		</form>
+		{#each Object.values(err('template') ?? {}) as m (m)}<p class="mt-1 text-sm text-red-600" role="alert">{m}</p>{/each}
+		{#if form?.form === 'template' && form.saved}<p class="mt-1 text-sm text-emerald-600" role="status">Saved. <a href="/templates" class="underline">View templates</a></p>{/if}
+	</section>
+{/if}
+
 {#if data.canEdit}
 	<section class="mt-10 border-t border-slate-200 pt-6 dark:border-slate-800">
 		<h2 class="text-lg font-semibold text-red-600">Danger zone</h2>
