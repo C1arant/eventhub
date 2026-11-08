@@ -1,0 +1,10 @@
+node_modules
+.svelte-kit
+build
+data
+backups
+.superpowers
+test-results
+playwright-report
+.git
+.env

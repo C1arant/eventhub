@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # localhost only; tunnels reach it over the compose network
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+
+  cloudflared:
+    profiles: [cloudflare]
+    image: cloudflare/cloudflared:2025.11.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on: [app]
+
+  tailscale:
+    profiles: [tailscale]
+    image: tailscale/tailscale:v1.90.6
+    restart: unless-stopped
+    hostname: ${TS_HOSTNAME:-eventhub}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: ${TS_HOSTNAME:-eventhub}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/tailscale-serve.json
+      TS_USERSPACE: "true"
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./deploy/tailscale-serve.json:/config/tailscale-serve.json:ro
+    depends_on: [app]
+
+volumes:
+  tailscale-state:

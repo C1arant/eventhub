@@ -32,7 +32,7 @@ const card = (page: Page, name: string) => page.locator('li', { has: page.getByR
 test('show day: setup, invite, live control, guest view, revoke', async ({ browser }) => {
 	// Separate contexts (own cookies) for owner, crew and guest.
 	const newPage = async () =>
-		(await browser.newContext({ baseURL: 'http://localhost:4173', extraHTTPHeaders: { 'x-forwarded-proto': 'http' } })).newPage();
+		(await browser.newContext({ baseURL: 'http://localhost:4173' })).newPage();
 	const owner = await newPage();
 	const crew = await newPage();
 	const guest = await newPage();

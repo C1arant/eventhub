@@ -19,16 +19,12 @@ export default defineConfig({
 	use: { baseURL: 'http://localhost:4173', trace: 'retain-on-failure' },
 	projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 	webServer: {
-		command: process.env.E2E_SKIP_BUILD ? 'node build' : 'npm run build && node build',
-		url: 'http://localhost:4173/setup',
+		command: process.env.E2E_SKIP_BUILD ? 'node server.js' : 'npm run build && node server.js',
+		url: 'http://localhost:4173/healthz',
 		timeout: 240_000,
 		reuseExistingServer: false,
 		env: {
 			DATA_DIR: process.env.E2E_DATA_DIR,
-			ORIGIN: 'http://localhost:4173',
-			// adapter-node 6 ignores ORIGIN at runtime and derives the request origin from
-			// this header (the browser contexts send it, as a reverse proxy would).
-			PROTOCOL_HEADER: 'x-forwarded-proto',
 			PORT: '4173',
 			BODY_SIZE_LIMIT: '26214400',
 			TZ: 'Europe/London'
