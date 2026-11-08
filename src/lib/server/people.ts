@@ -49,7 +49,7 @@ function toPerson(r: typeof people.$inferSelect): Person {
 }
 
 function reindex(db: DB, id: number, p: PersonInput) {
-	indexDoc(db, 'person', id, null, [p.name, p.email, p.phone, p.notes, p.needs, p.tags.join(' ')].filter(Boolean).join(' '));
+	indexDoc(db, 'person', id, null, [p.name, p.tags.join(' ')].filter(Boolean).join(' '));
 }
 
 export function createPerson(db: DB, input: PersonInput): number {
