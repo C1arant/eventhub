@@ -28,8 +28,5 @@
 
 <section class="mt-8">
 	<h2 class="text-lg font-semibold">Sessions</h2>
-	<p class="text-sm text-slate-600 dark:text-slate-400">Sign out of every device where you are logged in.</p>
-	<form method="POST" action="/logout?/everywhere" class="mt-2">
-		<button class="btn-secondary">Log out everywhere</button>
-	</form>
+	<p class="text-sm text-slate-600 dark:text-slate-400">To sign out everywhere, use <a class="underline" href="/account">Account</a>.</p>
 </section>

@@ -30,6 +30,7 @@
 				<input type="search" name="q" placeholder="Search" aria-label="Search"
 					class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950" />
 			</form>
+			<a href="/account" aria-current={page.url.pathname.startsWith('/account') ? 'page' : undefined} class="shrink-0 rounded-md px-2 py-1.5 text-sm hover:bg-slate-100 aria-[current=page]:font-medium dark:hover:bg-slate-800">Account</a>
 			<form method="POST" action="/logout?/logout">
 				<button class="btn-secondary" title={data.user.email}>Log out</button>
 			</form>
