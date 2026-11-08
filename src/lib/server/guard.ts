@@ -19,3 +19,11 @@ export function requireActor(
 	if (actor.kind === 'guest' || actor.kind === 'display') error(404, 'Link no longer valid');
 	error(403, 'You do not have permission to do that');
 }
+
+/** Any logged-in owner/crew user (for global pages). anon -> /login; guest/display -> 404. */
+export function requireUser(locals: { actor: Actor }): Extract<Actor, { kind: 'owner' | 'crew' }> {
+	const a = locals.actor;
+	if (a.kind === 'anon') redirect(303, '/login');
+	if (a.kind !== 'owner' && a.kind !== 'crew') error(404, 'Link no longer valid');
+	return a;
+}

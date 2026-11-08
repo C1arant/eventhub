@@ -65,6 +65,13 @@ export function renameSection(db: DB, id: number, name: string): void {
 	db.update(taskSections).set({ name }).where(eq(taskSections.id, id)).run();
 }
 
+/** Index of a section in its event's ordered list (0-based). */
+export function sectionIndex(db: DB, id: number): number {
+	const s = getSection(db, id);
+	if (!s) return -1;
+	return db.select({ id: taskSections.id }).from(taskSections).where(eq(taskSections.eventId, s.eventId)).orderBy(asc(taskSections.position), asc(taskSections.id)).all().findIndex((r) => r.id === id);
+}
+
 /** Move a section to a 0-based position among its event's sections; the rest are renumbered. */
 export function moveSection(db: DB, id: number, newPosition: number): void {
 	const s = getSection(db, id);
@@ -80,9 +87,14 @@ export function moveSection(db: DB, id: number, newPosition: number): void {
 }
 
 export function deleteSection(db: DB, id: number): void {
+	const s = getSection(db, id);
 	const ids = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.sectionId, id)).all();
 	db.delete(taskSections).where(eq(taskSections.id, id)).run(); // tasks cascade
 	for (const r of ids) removeDoc(db, 'task', r.id);
+	if (s) {
+		const rest = db.select({ id: taskSections.id }).from(taskSections).where(eq(taskSections.eventId, s.eventId)).orderBy(asc(taskSections.position), asc(taskSections.id)).all();
+		rest.forEach((r, i) => db.update(taskSections).set({ position: i }).where(eq(taskSections.id, r.id)).run());
+	}
 }
 
 // ---- tasks ----
@@ -102,7 +114,8 @@ export function addTask(db: DB, eventId: number, sectionId: number, input: TaskI
 }
 
 export function updateTask(db: DB, id: number, input: TaskInput): void {
-	db.update(tasks).set(input).where(eq(tasks.id, id)).run();
+	const { status: _status, ...rest } = input; // editing never changes status
+	db.update(tasks).set(rest).where(eq(tasks.id, id)).run();
 	const t = getTask(db, id);
 	if (t) reindex(db, id, t.eventId, input);
 }

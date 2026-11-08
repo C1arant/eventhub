@@ -40,6 +40,7 @@ describe('tasks', () => {
 		setTaskStatus(db, id, 'done');
 		expect(listTasksBySection(db, e)[0].tasks[0].status).toBe('done');
 		updateTask(db, id, t({ title: 'New', priority: 'high', dueDate: '2026-03-01' }));
+		expect(listTasksBySection(db, e)[0].tasks[0].status).toBe('done');
 		expect(listTasksBySection(db, e)[0].tasks[0]).toMatchObject({ title: 'New', priority: 'high', dueDate: '2026-03-01', eventName: 'Show' });
 		deleteTask(db, id);
 		expect(listTasksBySection(db, e)[0].tasks).toEqual([]);
@@ -60,6 +61,20 @@ describe('tasks', () => {
 		const r = myTasks(db, me);
 		expect(r.map((x) => x.title)).toEqual(['early', 'late', 'none']);
 		expect(r[0]).toMatchObject({ ownerName: 'Me', eventName: 'Show' });
+	});
+
+	it('moveSection works after a delete leaves position gaps', () => {
+		const db = createTestDb();
+		const e = ev(db);
+		const a = addSection(db, e, 'A');
+		const b = addSection(db, e, 'B');
+		const c = addSection(db, e, 'C');
+		deleteSection(db, b);
+		moveSection(db, c, 0);
+		expect(listTasksBySection(db, e).map((x) => x.section.name)).toEqual(['C', 'A']);
+		moveSection(db, c, 1);
+		expect(listTasksBySection(db, e).map((x) => x.section.name)).toEqual(['A', 'C']);
+		expect(a).toBeGreaterThan(0);
 	});
 
 	it('deleting a section deletes its tasks', () => {

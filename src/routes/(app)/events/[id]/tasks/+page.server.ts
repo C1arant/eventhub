@@ -7,7 +7,7 @@ import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
 import {
 	addSection, addTask, deleteSection, deleteTask, getSection, getTask, listTasksBySection, moveSection,
-	ownerCandidates, renameSection, setTaskStatus, taskInput, updateTask, TASK_STATUSES
+	ownerCandidates, renameSection, sectionIndex, setTaskStatus, taskInput, updateTask, TASK_STATUSES
 } from '#lib/server/tasks.js';
 import { addDays } from '#lib/server/util/dates.js';
 
@@ -99,8 +99,9 @@ export const actions = {
 		const { id, db } = begin(locals, params);
 		const values = formObject(await request.formData());
 		const s = ownSection(db, id, values.sectionId);
-		const dir = values.dir === 'up' ? -1 : 1;
-		moveSection(db, s.id, s.position + dir);
+		const dir = z.enum(['up', 'down']).safeParse(values.dir);
+		if (!dir.success) return fail(400, { form: `section${s.id}`, errors: { dir: 'Invalid direction' }, values });
+		moveSection(db, s.id, sectionIndex(db, s.id) + (dir.data === 'up' ? -1 : 1));
 		return { form: `section${s.id}`, saved: true };
 	},
 	deleteSection: async ({ locals, params, request }) => {

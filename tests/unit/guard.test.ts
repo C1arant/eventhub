@@ -45,3 +45,13 @@ describe('requireActor', () => {
 		expect(requireActor(loc(actor), 'settings:manage', undefined, db)).toBe(actor);
 	});
 });
+
+describe('requireUser', () => {
+	it('anon redirects, guest/display 404, owner/crew pass', async () => {
+		const { requireUser } = await import('../../src/lib/server/guard');
+		expect(thrown(() => requireUser(loc({ kind: 'anon' }))).location).toBe('/login');
+		expect(thrown(() => requireUser(loc({ kind: 'display', eventId: 1 }))).status).toBe(404);
+		expect(requireUser(loc({ kind: 'crew', user: user('crew') })).kind).toBe('crew');
+		expect(requireUser(loc({ kind: 'owner', user: user('owner') })).kind).toBe('owner');
+	});
+});
