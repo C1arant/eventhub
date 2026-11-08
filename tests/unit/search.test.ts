@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { Actor } from '../../src/lib/server/auth/can';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import { users } from '../../src/lib/server/db/schema';
-import { createEvent, eventInput } from '../../src/lib/server/events';
+import { createEvent, deleteEvent, eventInput, updateEvent } from '../../src/lib/server/events';
 import { assign, createPerson, deletePerson, personInput } from '../../src/lib/server/people';
-import { rebuildSearchIndex, search } from '../../src/lib/server/search';
-import { addTask, addSection, taskInput } from '../../src/lib/server/tasks';
+import { rebuildSearchIndex, sanitizeQuery, search } from '../../src/lib/server/search';
+import { addSection, addTask, deleteTask, taskInput } from '../../src/lib/server/tasks';
 
 type Db = ReturnType<typeof createTestDb>;
 const ev = (db: Db, name: string, startDate = '2099-01-01', extra: Record<string, unknown> = {}) =>
@@ -135,5 +135,52 @@ describe('search', () => {
 		expect(search(db, owner, 'pat')).toHaveLength(1);
 		rebuildSearchIndex(db); // idempotent, no duplicates
 		expect(search(db, owner, 'gala')).toHaveLength(1);
+	});
+
+	it('crew are not starved by 600 owner-only matches outranking theirs', () => {
+		const db = createTestDb();
+		const mine = ev(db, 'Mine');
+		const other = ev(db, 'Other');
+		const sec = addSection(db, other, 'S');
+		for (let i = 0; i < 600; i++) addTask(db, other, sec, taskInput.parse({ title: `widget widget widget ${i}` }));
+		task(db, mine, 'one widget only');
+		const me = person(db, 'Me');
+		assign(db, mine, me, {});
+		const r = search(db, crewFor(db, me), 'widget');
+		expect(r.map((x) => x.title)).toEqual(['one widget only']);
+		expect(search(db, owner, 'widget')).toHaveLength(30);
+	});
+
+	it('renamed event shows current title; deleted event and task rows vanish and self-heal', () => {
+		const db = createTestDb();
+		const e = ev(db, 'Oldname');
+		updateEvent(db, e, eventInput.parse({ name: 'Newname', type: 'gig', startDate: '2099-01-01', endDate: '2099-01-01' }));
+		expect(search(db, owner, 'oldname')).toEqual([]);
+		expect(search(db, owner, 'newname')[0].title).toBe('Newname');
+		const t = task(db, e, 'Zebra job');
+		deleteTask(db, t);
+		expect(search(db, owner, 'zebra')).toEqual([]);
+		const e2 = ev(db, 'Gone');
+		task(db, e2, 'Yak chore');
+		deleteEvent(db, e2);
+		expect(search(db, owner, 'gone')).toEqual([]);
+		expect(search(db, owner, 'yak')).toEqual([]);
+		const left = db.$client.prepare("SELECT count(*) c FROM search_index WHERE text LIKE '%Yak%' OR text LIKE '%Gone%'").get() as { c: number };
+		expect(left.c).toBe(0);
+	});
+
+	it('strips marker chars at index time', () => {
+		const db = createTestDb();
+		ev(db, 'Marker show');
+		expect(search(db, owner, 'marker')[0].snippet).not.toMatch(/^[^]*/);
+	});
+
+	it('sanitizeQuery handles punctuation', () => {
+		expect(sanitizeQuery('   ')).toBeNull();
+		for (const q of ['(', '"', '--']) {
+			const m = sanitizeQuery(q);
+			expect(m === null || typeof m === 'string').toBe(true);
+			expect(() => search(createTestDb(), owner, q)).not.toThrow();
+		}
 	});
 });

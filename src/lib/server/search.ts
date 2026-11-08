@@ -17,12 +17,12 @@ export type SearchResult = {
 export const MARK_START = '\u0002';
 export const MARK_END = '\u0003';
 const MAX_RESULTS = 30;
-const RAW_LIMIT = 500;
+const PAGE = 100;
 
 export function indexDoc(db: DB, kind: DocKind, refId: number, eventId: number | null, text: string): void {
 	db.$client.transaction(() => {
 		db.$client.prepare('DELETE FROM search_index WHERE kind = ? AND ref_id = ?').run(kind, refId);
-		db.$client.prepare('INSERT INTO search_index (kind, ref_id, event_id, text) VALUES (?, ?, ?, ?)').run(kind, refId, eventId, text);
+		db.$client.prepare('INSERT INTO search_index (kind, ref_id, event_id, text) VALUES (?, ?, ?, ?)').run(kind, refId, eventId, text.replace(/[]/g, ''));
 	})();
 }
 
@@ -97,39 +97,49 @@ export function search(db: DB, actor: Actor, q: string): SearchResult[] {
 		}
 	}
 
-	const raw = db.$client
-		.prepare(
-			`SELECT kind, ref_id AS refId, event_id AS eventId,
-			        snippet(search_index, 3, ?, ?, '…', 12) AS snippet
-			 FROM search_index WHERE search_index MATCH ? ORDER BY rank LIMIT ?`
-		)
-		.all(MARK_START, MARK_END, match, RAW_LIMIT) as { kind: DocKind; refId: number; eventId: number | null; snippet: string }[];
+	let scope = '';
+	const params: unknown[] = [MARK_START, MARK_END, match];
+	if (myEvents && shared) {
+		scope = `AND ((kind = 'event' AND ref_id IN (SELECT value FROM json_each(?)))
+			OR (kind = 'task' AND event_id IN (SELECT value FROM json_each(?)))
+			OR (kind = 'person' AND ref_id IN (SELECT value FROM json_each(?))))`;
+		params.push(JSON.stringify([...myEvents]), JSON.stringify([...myEvents]), JSON.stringify([...shared.keys()]));
+	}
+	const stmt = db.$client.prepare(
+		`SELECT kind, ref_id AS refId, event_id AS eventId,
+		        snippet(search_index, 3, ?, ?, '…', 12) AS snippet
+		 FROM search_index WHERE search_index MATCH ? ${scope} ORDER BY rank LIMIT ? OFFSET ?`
+	);
 
 	const out: SearchResult[] = [];
-	for (const r of raw) {
-		if (out.length >= MAX_RESULTS) break;
-		let title: string | undefined;
-		let eventId = r.eventId;
-		if (r.kind === 'event') {
-			if (myEvents && !myEvents.has(r.refId)) continue;
-			title = db.select({ n: events.name }).from(events).where(eq(events.id, r.refId)).get()?.n;
-		} else if (r.kind === 'task') {
-			const t = db.select({ t: tasks.title, e: tasks.eventId }).from(tasks).where(eq(tasks.id, r.refId)).get();
-			if (!t || (myEvents && !myEvents.has(t.e))) continue;
-			title = t.t;
-			eventId = t.e;
-		} else {
-			if (shared) {
-				const ev = shared.get(r.refId);
-				if (ev === undefined) continue;
-				eventId = ev;
+	const stale: { kind: DocKind; refId: number }[] = [];
+	for (let offset = 0; out.length < MAX_RESULTS; offset += PAGE) {
+		const raw = stmt.all(...params, PAGE, offset) as { kind: DocKind; refId: number; eventId: number | null; snippet: string }[];
+		if (raw.length === 0) break;
+		for (const r of raw) {
+			if (out.length >= MAX_RESULTS) break;
+			let title: string | undefined;
+			let eventId = r.eventId;
+			if (r.kind === 'event') {
+				title = db.select({ n: events.name }).from(events).where(eq(events.id, r.refId)).get()?.n;
+			} else if (r.kind === 'task') {
+				const t = db.select({ t: tasks.title, e: tasks.eventId }).from(tasks).where(eq(tasks.id, r.refId)).get();
+				if (t && (!myEvents || myEvents.has(t.e))) {
+					title = t.t;
+					eventId = t.e;
+				}
 			} else {
-				eventId = null;
+				eventId = shared ? (shared.get(r.refId) ?? null) : null;
+				title = db.select({ n: people.name }).from(people).where(eq(people.id, r.refId)).get()?.n;
 			}
-			title = db.select({ n: people.name }).from(people).where(eq(people.id, r.refId)).get()?.n;
+			if (title === undefined) {
+				stale.push({ kind: r.kind, refId: r.refId }); // self-heal below
+				continue;
+			}
+			out.push({ kind: r.kind, refId: r.refId, eventId, title, snippet: r.snippet });
 		}
-		if (title === undefined) continue; // stale index row
-		out.push({ kind: r.kind, refId: r.refId, eventId, title, snippet: r.snippet });
+		if (raw.length < PAGE) break;
 	}
+	for (const s of stale) removeDoc(db, s.kind, s.refId);
 	return out;
 }
