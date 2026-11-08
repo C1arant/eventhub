@@ -1,5 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { createGuestLink } from './auth/guests';
 import type { DB } from './db';
 import { assignmentDayCalls, assignments, eventDays, events, guestLinks, invites, people, users } from './db/schema';
 import { indexDoc, removeDoc } from './search';
@@ -146,9 +147,11 @@ export type EventPerson = {
 	assignmentId: number;
 	personId: number;
 	name: string;
-	email: string;
+	/** Owner view only; absent from crew payloads. */
+	email?: string;
 	phone: string;
-	needs: string;
+	/** Owner view only; absent from crew payloads. */
+	needs?: string;
 	eventRole: string;
 	callTime: string | null;
 	isShowCaller: boolean;
@@ -156,7 +159,8 @@ export type EventPerson = {
 	dayCalls: { dayId: number; dayLabel: string; callTime: string }[];
 };
 
-export function listEventPeople(db: DB, eventId: number): EventPerson[] {
+/** includePrivate (owner only) adds email and needs; crew payloads never carry them. */
+export function listEventPeople(db: DB, eventId: number, opts: { includePrivate: boolean }): EventPerson[] {
 	const rows = db
 		.select({
 			assignmentId: assignments.id,
@@ -188,8 +192,9 @@ export function listEventPeople(db: DB, eventId: number): EventPerson[] {
 		.orderBy(asc(eventDays.position), asc(eventDays.date))
 		.all();
 	const withLogin = new Set(db.select({ personId: users.personId }).from(users).all().map((u) => u.personId));
-	return rows.map((r) => ({
+	return rows.map(({ email, needs, ...r }) => ({
 		...r,
+		...(opts.includePrivate ? { email, needs } : {}),
 		hasLogin: withLogin.has(r.personId),
 		dayCalls: calls.filter((c) => c.assignmentId === r.assignmentId).map((c) => ({ dayId: c.dayId, dayLabel: c.dayLabel, callTime: c.callTime }))
 	}));
@@ -201,19 +206,20 @@ export type CallSheetRow = {
 	phone: string;
 	callTime: string | null;
 	dayCalls: { dayLabel: string; callTime: string }[];
-	needs: string;
+	/** Owner view only; absent from crew payloads. */
+	needs?: string;
 };
 
-/** Sorted by call time (unset last), then name. */
-export function callSheet(db: DB, eventId: number): CallSheetRow[] {
-	return listEventPeople(db, eventId)
+/** Sorted by call time (unset last), then name. Needs are included only with includePrivate (owner). */
+export function callSheet(db: DB, eventId: number, opts: { includePrivate: boolean }): CallSheetRow[] {
+	return listEventPeople(db, eventId, opts)
 		.map((p) => ({
 			name: p.name,
 			eventRole: p.eventRole,
 			phone: p.phone,
 			callTime: p.callTime,
 			dayCalls: p.dayCalls.map((d) => ({ dayLabel: d.dayLabel, callTime: d.callTime })),
-			needs: p.needs
+			...(opts.includePrivate ? { needs: p.needs } : {})
 		}))
 		.sort((a, b) => {
 			if (a.callTime !== b.callTime) {
@@ -266,6 +272,55 @@ export function getGuestLink(db: DB, id: number) {
 		.innerJoin(assignments, eq(assignments.id, guestLinks.assignmentId))
 		.where(eq(guestLinks.id, id))
 		.get();
+}
+
+/** The assignment, only if it belongs to this event (IDOR guard); otherwise undefined. */
+export function assignmentInEvent(db: DB, eventId: number, assignmentId: number) {
+	const a = getAssignment(db, assignmentId);
+	return a && a.eventId === eventId ? a : undefined;
+}
+
+/** The guest link, only if it belongs to this event; otherwise undefined. */
+export function guestLinkInEvent(db: DB, eventId: number, linkId: number) {
+	const l = getGuestLink(db, linkId);
+	return l && l.eventId === eventId ? l : undefined;
+}
+
+
+/** A guest link's contact person must be assigned to the same event. */
+export function contactEligible(db: DB, eventId: number, personId: number): boolean {
+	return !!db
+		.select({ id: assignments.id })
+		.from(assignments)
+		.where(and(eq(assignments.eventId, eventId), eq(assignments.personId, personId)))
+		.get();
+}
+
+export type InviteEligibility = { ok: true; email: string } | { ok: false; reason: string };
+
+/** Whether a crew invite may be created for this person. */
+export function inviteEligibility(db: DB, personId: number): InviteEligibility {
+	const p = db.select().from(people).where(eq(people.id, personId)).get();
+	if (!p) return { ok: false, reason: 'Person not found' };
+	if (db.select({ id: users.id }).from(users).where(eq(users.personId, personId)).get())
+		return { ok: false, reason: 'This person already has a login' };
+	if (!p.email) return { ok: false, reason: 'Add an email address to this person first' };
+	if (db.select({ id: users.id }).from(users).where(eq(users.email, p.email.trim().toLowerCase())).get())
+		return { ok: false, reason: 'A user with this email already exists' };
+	return { ok: true, email: p.email };
+}
+
+/** Create a guest link, returning the raw token (never stored). expiresAt undefined = default expiry. */
+export function createLinkFor(
+	db: DB,
+	eventId: number,
+	assignmentId: number,
+	o: { liveAccess: boolean; contactPersonId: number | null; expiresAt?: number }
+): { ok: true; token: string } | { ok: false; error: string } {
+	if (!assignmentInEvent(db, eventId, assignmentId)) return { ok: false, error: 'Assignment not found' };
+	if (o.contactPersonId !== null && !contactEligible(db, eventId, o.contactPersonId))
+		return { ok: false, error: 'Choose someone assigned to this event' };
+	return { ok: true, token: createGuestLink(db, assignmentId, o) };
 }
 
 /** How many events a person is assigned to (for the delete warning). */

@@ -2,14 +2,14 @@ import { eq } from 'drizzle-orm';
 import { error, fail } from '@sveltejs/kit';
 import { z } from 'zod';
 import { can } from '#lib/server/auth/can.js';
-import { createGuestLink, revokeGuestLink } from '#lib/server/auth/guests.js';
-import { createInvite, getUserByEmail } from '#lib/server/auth/users.js';
+import { revokeGuestLink } from '#lib/server/auth/guests.js';
+import { createInvite } from '#lib/server/auth/users.js';
 import { getDb, type DB } from '#lib/server/db/index.js';
 import { getEvent, listDays } from '#lib/server/events.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
 import {
-	assign, callTimeField, getAssignment, getGuestLink, listEventPeople, listGuestLinks, setDayCallTime,
+	assign, assignmentInEvent, callTimeField, createLinkFor, guestLinkInEvent, inviteEligibility, listEventPeople, listGuestLinks, setDayCallTime,
 	unassign, updateAssignment
 } from '#lib/server/people.js';
 import { people } from '#lib/server/db/schema.js';
@@ -31,7 +31,7 @@ export const load = ({ locals, params }) => {
 	const actor = requireActor(locals, 'people:view', { eventId: id });
 	if (!getEvent(db, id)) error(404, 'Event not found');
 	const canManage = can(db, actor, 'guest:manage', { eventId: id });
-	const assigned = listEventPeople(db, id);
+	const assigned = listEventPeople(db, id, { includePrivate: actor.kind === 'owner' });
 	const now = Date.now();
 	const taken = new Set(assigned.map((a) => a.personId));
 	return {
@@ -57,8 +57,8 @@ function begin(locals: App.Locals, params: { id: string }) {
 }
 
 function ownAssignment(db: DB, eid: number, raw: unknown) {
-	const a = getAssignment(db, idOf(raw));
-	if (!a || a.eventId !== eid) error(404, 'Assignment not found');
+	const a = assignmentInEvent(db, eid, idOf(raw));
+	if (!a) error(404, 'Assignment not found');
 	return a;
 }
 
@@ -130,20 +130,17 @@ export const actions = {
 		const parsed = linkSchema.safeParse(values);
 		if (!parsed.success) return fail(400, { form: key, errors: fieldErrors(parsed.error), values });
 		const { contactPersonId, expires, liveAccess } = parsed.data;
-		if (contactPersonId !== null) {
-			const c = getAssignmentForPerson(db, id, contactPersonId);
-			if (!c) return fail(400, { form: key, errors: { contactPersonId: 'Choose someone assigned to this event' }, values });
-		}
 		const expiresAt = expires ? new Date(`${expires}T23:59:00`).getTime() : undefined;
 		if (expiresAt !== undefined && expiresAt <= Date.now()) return fail(400, { form: key, errors: { expires: 'Expiry must be in the future' }, values });
-		const token = createGuestLink(db, a.id, { liveAccess, contactPersonId, expiresAt });
-		return { form: key, newLink: `${url.origin}/g/${token}` };
+		const r = createLinkFor(db, id, a.id, { liveAccess, contactPersonId, expiresAt });
+		if (!r.ok) return fail(400, { form: key, errors: { contactPersonId: r.error }, values });
+		return { form: key, newLink: `${url.origin}/g/${r.token}` };
 	},
 	revokeLink: async ({ locals, params, request }) => {
 		const { id, db } = begin(locals, params);
 		const values = formObject(await request.formData());
-		const l = getGuestLink(db, idOf(values.linkId));
-		if (!l || l.eventId !== id) error(404, 'Link not found');
+		const l = guestLinkInEvent(db, id, idOf(values.linkId));
+		if (!l) error(404, 'Link not found');
 		revokeGuestLink(db, l.id);
 		return { form: 'revoke', saved: true };
 	},
@@ -152,15 +149,9 @@ export const actions = {
 		const values = formObject(await request.formData());
 		const a = ownAssignment(db, id, values.assignmentId);
 		const key = `invite${a.id}`;
-		const person = listEventPeople(db, id).find((p) => p.assignmentId === a.id)!;
-		if (person.hasLogin) return fail(400, { form: key, errors: { _form: 'This person already has a login' }, values });
-		if (!person.email) return fail(400, { form: key, errors: { _form: 'Add an email address to this person first' }, values });
-		if (getUserByEmail(db, person.email)) return fail(400, { form: key, errors: { _form: 'A user with this email already exists' }, values });
-		const token = createInvite(db, { email: person.email, personId: person.personId }, Date.now());
-		return { form: key, newInvite: `${url.origin}/invite/${token}`, inviteEmail: person.email };
+		const el = inviteEligibility(db, a.personId);
+		if (!el.ok) return fail(400, { form: key, errors: { _form: el.reason }, values });
+		const token = createInvite(db, { email: el.email, personId: a.personId }, Date.now());
+		return { form: key, newInvite: `${url.origin}/invite/${token}`, inviteEmail: el.email };
 	}
 };
-
-function getAssignmentForPerson(db: DB, eid: number, personId: number) {
-	return listEventPeople(db, eid).find((p) => p.personId === personId);
-}

@@ -62,7 +62,7 @@ describe('people', () => {
 			none: assign(db, e, person(db, 'Cat'), { eventRole: 'Host' })
 		};
 		setDayCallTime(db, ids.bo, day.id, '13:00');
-		const rows = callSheet(db, e);
+		const rows = callSheet(db, e, { includePrivate: true });
 		expect(rows.map((r) => r.name)).toEqual(['Bo', 'Amy', 'Zed', 'Cat']);
 		expect(rows[0].dayCalls).toEqual([{ dayLabel: day.label, callTime: '13:00' }]);
 		expect(rows[1].needs).toBe('vegan');
@@ -70,9 +70,9 @@ describe('people', () => {
 		expect(rows[3].callTime).toBeNull();
 		// updating an existing day call replaces it; blank clears it
 		setDayCallTime(db, ids.bo, day.id, '12:00');
-		expect(callSheet(db, e)[0].dayCalls).toEqual([{ dayLabel: day.label, callTime: '12:00' }]);
+		expect(callSheet(db, e, { includePrivate: true })[0].dayCalls).toEqual([{ dayLabel: day.label, callTime: '12:00' }]);
 		setDayCallTime(db, ids.bo, day.id, null);
-		expect(callSheet(db, e)[0].dayCalls).toEqual([]);
+		expect(callSheet(db, e, { includePrivate: true })[0].dayCalls).toEqual([]);
 	});
 
 	it('updateAssignment changes role, call time and show caller', () => {
@@ -80,7 +80,7 @@ describe('people', () => {
 		const e = ev(db);
 		const a = assign(db, e, person(db, 'Ann'), { eventRole: 'x' });
 		updateAssignment(db, a, { eventRole: 'FOH', callTime: '10:00', isShowCaller: true });
-		const r = callSheet(db, e)[0];
+		const r = callSheet(db, e, { includePrivate: true })[0];
 		expect(r.eventRole).toBe('FOH');
 		expect(r.callTime).toBe('10:00');
 	});
