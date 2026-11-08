@@ -99,7 +99,7 @@ export function deleteSection(db: DB, id: number): void {
 
 // ---- tasks ----
 export function getTask(db: DB, id: number) {
-	return db.select({ id: tasks.id, eventId: tasks.eventId, sectionId: tasks.sectionId }).from(tasks).where(eq(tasks.id, id)).get();
+	return db.select({ id: tasks.id, eventId: tasks.eventId, sectionId: tasks.sectionId, ownerUserId: tasks.ownerUserId }).from(tasks).where(eq(tasks.id, id)).get();
 }
 
 function reindex(db: DB, id: number, eventId: number, i: Pick<TaskInput, 'title' | 'notes'>) {
@@ -137,12 +137,21 @@ export function listTasksBySection(db: DB, eventId: number): { section: Section;
 	return sections.map((section) => ({ section, tasks: rows.filter((r) => r.sectionId === section.id) }));
 }
 
-/** Open tasks owned by the user; soonest due first (overdue naturally first), undated last. */
+/**
+ * Open tasks owned by the user; soonest due first (overdue naturally first), undated last.
+ * Crew only see tasks on events they are still assigned to; owners see all they own.
+ */
 export function myTasks(db: DB, userId: number): TaskRow[] {
-	return joined(db)
-		.where(and(eq(tasks.ownerUserId, userId), ne(tasks.status, 'done')))
-		.orderBy(sql`${tasks.dueDate} is null`, asc(tasks.dueDate), asc(tasks.id))
-		.all();
+	const u = db.select({ role: users.role, personId: users.personId }).from(users).where(eq(users.id, userId)).get();
+	if (!u) return [];
+	if (u.role === 'crew' && u.personId === null) return [];
+	const where = and(eq(tasks.ownerUserId, userId), ne(tasks.status, 'done'));
+	const q = joined(db);
+	const filtered =
+		u.role === 'crew'
+			? q.where(and(where, sql`exists (select 1 from ${assignments} where ${assignments.eventId} = ${tasks.eventId} and ${assignments.personId} = ${u.personId})`))
+			: q.where(where);
+	return filtered.orderBy(sql`${tasks.dueDate} is null`, asc(tasks.dueDate), asc(tasks.id)).all();
 }
 
 /** Users who can own a task on this event: assigned crew plus owner accounts. */

@@ -1,8 +1,8 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createGuestLink } from './auth/guests';
 import type { DB } from './db';
-import { assignmentDayCalls, assignments, eventDays, events, guestLinks, invites, people, users } from './db/schema';
+import { assignmentDayCalls, assignments, eventDays, events, guestLinks, invites, people, tasks, users } from './db/schema';
 import { indexDoc, removeDoc } from './search';
 
 
@@ -126,7 +126,16 @@ export function updateAssignment(db: DB, id: number, i: AssignInput): void {
 
 /** Removing the assignment cascades to day calls and guest links, so their links stop resolving. */
 export function unassign(db: DB, assignmentId: number): void {
-	db.delete(assignments).where(eq(assignments.id, assignmentId)).run();
+	db.transaction((tx) => {
+		const a = tx.select().from(assignments).where(eq(assignments.id, assignmentId)).get();
+		if (a) {
+			// Tasks on this event owned by logins of the removed person become unassigned.
+			const logins = tx.select({ id: users.id }).from(users).where(eq(users.personId, a.personId)).all().map((u) => u.id);
+			if (logins.length)
+				tx.update(tasks).set({ ownerUserId: null }).where(and(eq(tasks.eventId, a.eventId), inArray(tasks.ownerUserId, logins))).run();
+		}
+		tx.delete(assignments).where(eq(assignments.id, assignmentId)).run();
+	});
 }
 
 /** Set (or with null, clear) one day's call time for an assignment. */

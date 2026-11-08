@@ -16,6 +16,9 @@
 			<select name="ownerUserId" class={inp}>
 				<option value="">Unassigned</option>
 				{#each data.owners as o (o.id)}<option value={o.id} selected={String(o.id) === (v.ownerUserId ?? '')}>{o.name}</option>{/each}
+				{#if v.ownerUserId && !data.owners.some((o) => String(o.id) === v.ownerUserId)}
+					<option value={v.ownerUserId} selected>{v.ownerName || 'Former owner'} (no longer on this event)</option>
+				{/if}
 			</select></label>
 		<label class="block"><span class="text-xs text-slate-500">Priority</span>
 			<select name="priority" class={inp}>
@@ -92,7 +95,7 @@
 								{#if data.canEdit}
 									<form method="POST" action="?/updateTask" use:enhance={keep} class="space-y-2 pb-3">
 										<input type="hidden" name="taskId" value={t.id} />
-										{@render taskFields({ title: t.title, ownerUserId: String(t.ownerUserId ?? ''), priority: t.priority, dueDate: t.dueDate ?? '', notes: t.notes }, `task${t.id}`)}
+										{@render taskFields({ title: t.title, ownerUserId: String(t.ownerUserId ?? ''), ownerName: t.ownerName ?? '', priority: t.priority, dueDate: t.dueDate ?? '', notes: t.notes }, `task${t.id}`)}
 										<div class="flex gap-2">
 											<button class="btn-primary">Save task</button>
 											<button class="btn-secondary" formaction="?/setStatus" name="status" value={t.status === 'doing' ? 'todo' : 'doing'}>{t.status === 'doing' ? 'Stop' : 'Start'}</button>

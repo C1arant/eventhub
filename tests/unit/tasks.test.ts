@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createTestDb } from '../../src/lib/server/db/test-db';
+import { assign, createPerson, personInput, unassign } from '../../src/lib/server/people';
 import { users } from '../../src/lib/server/db/schema';
 import { createEvent, dashboard, eventInput } from '../../src/lib/server/events';
 import {
@@ -109,5 +110,38 @@ describe('tasks', () => {
 		const user = { id: me, email: 'me@x.com', name: 'me', role: 'owner' as const, personId: null };
 		const d = dashboard(db, { kind: 'owner', user }, '2026-03-10');
 		expect(d.myTasks.map((x) => x.title)).toEqual(['overdue', 'soon']);
+	});
+});
+
+describe('crew task visibility', () => {
+	it('crew only see tasks on events they are still assigned to; unassign clears ownership', () => {
+		const db = createTestDb();
+		const e1 = ev(db, 'One');
+		const e2 = ev(db, 'Two');
+		const s1 = addSection(db, e1, 'S');
+		const s2 = addSection(db, e2, 'S');
+		const pid = createPerson(db, personInput.parse({ name: 'Cru' }));
+		const crew = db.insert(users).values({ email: 'c@x.com', name: 'Cru', passwordHash: 'x', role: 'crew', personId: pid, createdAt: 0 }).returning({ id: users.id }).get().id;
+		const a1 = assign(db, e1, pid, { eventRole: '' });
+		assign(db, e2, pid, { eventRole: '' });
+		const t1 = addTask(db, e1, s1, t({ title: 'one', ownerUserId: crew }));
+		addTask(db, e2, s2, t({ title: 'two', ownerUserId: crew }));
+		expect(myTasks(db, crew).map((x) => x.title).sort()).toEqual(['one', 'two']);
+		unassign(db, a1);
+		expect(myTasks(db, crew).map((x) => x.title)).toEqual(['two']);
+		expect(listTasksBySection(db, e1)[0].tasks.find((x) => x.id === t1)!.ownerUserId).toBeNull();
+		expect(listTasksBySection(db, e2)[0].tasks[0].ownerUserId).toBe(crew);
+	});
+	it('stale ownership (no assignment) is hidden even if ownerUserId remains; unlinked crew see nothing', () => {
+		const db = createTestDb();
+		const e = ev(db);
+		const s = addSection(db, e, 'S');
+		const pid = createPerson(db, personInput.parse({ name: 'P' }));
+		const crew = db.insert(users).values({ email: 'c@x.com', name: 'C', passwordHash: 'x', role: 'crew', personId: pid, createdAt: 0 }).returning({ id: users.id }).get().id;
+		addTask(db, e, s, t({ ownerUserId: crew }));
+		expect(myTasks(db, crew)).toEqual([]);
+		db.update(users).set({ personId: null }).run();
+		assign(db, e, pid, { eventRole: '' });
+		expect(myTasks(db, crew)).toEqual([]);
 	});
 });

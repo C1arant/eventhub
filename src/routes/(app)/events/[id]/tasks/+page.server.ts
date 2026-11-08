@@ -68,10 +68,10 @@ function withDue(values: Record<string, string>, eventStart: string): Record<str
 	return values;
 }
 
-function parseTask(values: Record<string, string>, owners: { id: number }[], eventStart: string) {
+function parseTask(values: Record<string, string>, owners: { id: number }[], eventStart: string, currentOwner: number | null = null) {
 	const parsed = taskInput.safeParse(withDue(values, eventStart));
 	if (!parsed.success) return { errors: fieldErrors(parsed.error) } as const;
-	if (parsed.data.ownerUserId !== null && !owners.some((o) => o.id === parsed.data.ownerUserId)) {
+	if (parsed.data.ownerUserId !== null && parsed.data.ownerUserId !== currentOwner && !owners.some((o) => o.id === parsed.data.ownerUserId)) {
 		return { errors: { ownerUserId: 'Choose someone assigned to this event' } } as const;
 	}
 	return { data: parsed.data } as const;
@@ -125,7 +125,7 @@ export const actions = {
 		const values = formObject(await request.formData());
 		const t = ownTask(db, id, values.taskId);
 		const event = getEvent(db, id)!;
-		const r = parseTask(values, ownerCandidates(db, id), event.startDate);
+		const r = parseTask(values, ownerCandidates(db, id), event.startDate, t.ownerUserId);
 		if ('errors' in r) return fail(400, { form: `task${t.id}`, errors: r.errors, values });
 		updateTask(db, t.id, r.data);
 		return { form: `task${t.id}`, saved: true };
