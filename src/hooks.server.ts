@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '#lib/server/auth/can.js';
+import { actorFromCredentials } from '#lib/server/live/stream-auth.js';
 import { actorFromSession } from '#lib/server/auth/session-actor.js';
 import { hasOwner } from '#lib/server/auth/users.js';
 import { getDb } from '#lib/server/db/index.js';
@@ -23,9 +24,16 @@ function isExempt(path: string): boolean {
 	);
 }
 
-// Later tasks add: actorFromGuestToken (/g/[token]), actorFromDisplayToken, live ?t=.
+// Later tasks add: actorFromGuestToken (/g/[token]).
 function resolveActor(event: Parameters<Handle>[0]['event']): Actor {
-	return actorFromSession(getDb(), event.cookies, event.url);
+	const db = getDb();
+	const actor = actorFromSession(db, event.cookies, event.url);
+	// Guest/display tokens are accepted via ?t= on /live/* only, and only when there is no session actor.
+	if (actor.kind === 'anon' && event.url.pathname.startsWith('/live/')) {
+		const t = event.url.searchParams.get('t');
+		if (t) return actorFromCredentials(db, { token: t }, Date.now());
+	}
+	return actor;
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

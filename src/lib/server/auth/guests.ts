@@ -93,3 +93,11 @@ export function revokeDisplayToken(db: DB, id: number): void {
 		.where(and(eq(displayTokens.id, id), isNull(displayTokens.revokedAt)))
 		.run();
 }
+
+export function listDisplayTokens(db: DB, eventId: number) {
+	return db
+		.select({ id: displayTokens.id, createdAt: displayTokens.createdAt })
+		.from(displayTokens)
+		.where(and(eq(displayTokens.eventId, eventId), isNull(displayTokens.revokedAt)))
+		.all();
+}

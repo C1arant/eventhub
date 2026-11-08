@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest';
+import { createSession, deleteSession } from '../../src/lib/server/auth/sessions';
+import { createDisplayToken, revokeDisplayToken } from '../../src/lib/server/auth/guests';
+import { createOwner } from '../../src/lib/server/auth/users';
+import { createTestDb } from '../../src/lib/server/db/test-db';
+import { createEvent, eventInput, listDays } from '../../src/lib/server/events';
+import { stillAllowed } from '../../src/lib/server/live/stream-auth';
+import { displayTokens } from '../../src/lib/server/db/schema';
+
+describe('stillAllowed', () => {
+	it('rejects missing credentials, accepts a display token, rejects after revoke', async () => {
+		const db = createTestDb();
+		const e = createEvent(db, eventInput.parse({ name: 'S', type: 'club', startDate: '2026-03-10', endDate: '2026-03-10' }));
+		const e2 = createEvent(db, eventInput.parse({ name: 'T', type: 'club', startDate: '2026-03-10', endDate: '2026-03-10' }));
+		const day = listDays(db, e)[0];
+		const day2 = listDays(db, e2)[0];
+		expect(stillAllowed(db, {}, day.id, Date.now())).toBe(false);
+		const tok = createDisplayToken(db, e);
+		expect(stillAllowed(db, { token: tok }, day.id, Date.now())).toBe(true);
+		expect(stillAllowed(db, { token: tok }, day2.id, Date.now())).toBe(false);
+		const row = db.select().from(displayTokens).get()!;
+		revokeDisplayToken(db, row.id);
+		expect(stillAllowed(db, { token: tok }, day.id, Date.now())).toBe(false);
+	});
+
+	it('session: valid then deleted', async () => {
+		const db = createTestDb();
+		const e = createEvent(db, eventInput.parse({ name: 'S', type: 'club', startDate: '2026-03-10', endDate: '2026-03-10' }));
+		const day = listDays(db, e)[0];
+		const owner = await createOwner(db, { name: 'O', email: 'o@x.co', password: 'password-long-1' });
+		const tok = createSession(db, owner.id);
+		expect(stillAllowed(db, { session: tok }, day.id, Date.now())).toBe(true);
+		expect(stillAllowed(db, { session: 'garbage' }, day.id, Date.now())).toBe(false);
+		deleteSession(db, tok);
+		expect(stillAllowed(db, { session: tok }, day.id, Date.now())).toBe(false);
+	});
+});

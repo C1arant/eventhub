@@ -11,6 +11,7 @@
 		{ href: `${base}/people`, label: 'People' },
 		{ href: `${base}/callsheet`, label: 'Call sheet' },
 		{ href: `${base}/run-of-show`, label: 'Run-of-show' },
+		{ href: `${base}/live`, label: 'Live' },
 		{ href: `${base}/files`, label: 'Files' }
 	]);
 	const active = (href: string) => (href === base ? page.url.pathname === base : page.url.pathname.startsWith(href));
