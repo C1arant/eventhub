@@ -56,3 +56,20 @@ describe('peekSession / heartbeat', () => {
 		expect(redactPath('/events/1')).toBe('/events/1');
 	});
 });
+
+describe('heartbeatTick', () => {
+	it('pings when allowed, closes when denied, closes (no throw) when the check throws', async () => {
+		const { heartbeatTick } = await import('../../src/lib/server/live/stream-auth');
+		const w: string[] = [];
+		let closed = 0;
+		heartbeatTick(() => true, (s) => w.push(s), () => closed++);
+		expect(w).toEqual([': ping\n\n']);
+		expect(closed).toBe(0);
+		heartbeatTick(() => false, (s) => w.push(s), () => closed++);
+		expect(w.length).toBe(1);
+		expect(closed).toBe(1);
+		expect(() => heartbeatTick(() => { throw new Error('db gone'); }, (s) => w.push(s), () => closed++)).not.toThrow();
+		expect(closed).toBe(2);
+		expect(w.length).toBe(1);
+	});
+});

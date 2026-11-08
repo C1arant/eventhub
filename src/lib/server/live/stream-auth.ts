@@ -20,3 +20,14 @@ export function actorFromCredentials(db: DB, c: StreamCredentials, now: number):
 export function stillAllowed(db: DB, c: StreamCredentials, dayId: number, now: number): boolean {
 	return can(db, actorFromCredentials(db, c, now), 'live:view', { dayId });
 }
+
+/** One heartbeat: ping if still allowed, close if not or if the check itself fails. Never throws. */
+export function heartbeatTick(check: () => boolean, write: (s: string) => void, close: () => void): void {
+	try {
+		if (!check()) return close();
+		write(': ping\n\n');
+	} catch (err) {
+		console.error('live heartbeat failed', err instanceof Error ? err.message : 'unknown error');
+		close();
+	}
+}

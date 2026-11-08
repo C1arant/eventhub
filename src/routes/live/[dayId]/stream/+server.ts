@@ -3,7 +3,7 @@ import { SESSION_COOKIE } from '#lib/server/auth/cookie.js';
 import { can } from '#lib/server/auth/can.js';
 import { getDb } from '#lib/server/db/index.js';
 import { subscribe } from '#lib/server/live/hub.js';
-import { stillAllowed } from '#lib/server/live/stream-auth.js';
+import { heartbeatTick, stillAllowed } from '#lib/server/live/stream-auth.js';
 import { getDay } from '#lib/server/ros.js';
 import { liveSnapshot, type LiveSnapshot } from '#lib/server/live/store.js';
 import { wireSnapshot } from '#lib/server/live/trim.js';
@@ -53,10 +53,10 @@ export const GET = ({ locals, params, url, cookies, request }) => {
 			unsub = subscribe(dayId, (data) => sendState(JSON.parse(data)));
 			write('retry: 1000\n\n');
 			sendState(liveSnapshot(db, dayId));
-			timer = setInterval(() => {
-				if (!stillAllowed(db, creds, dayId, Date.now())) return close();
-				write(': ping\n\n');
-			}, HEARTBEAT_MS);
+			timer = setInterval(
+				() => heartbeatTick(() => stillAllowed(db, creds, dayId, Date.now()), write, close),
+				HEARTBEAT_MS
+			);
 			request.signal.addEventListener('abort', close);
 		},
 		cancel() {
