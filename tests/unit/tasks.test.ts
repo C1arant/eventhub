@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import { assign, createPerson, personInput, unassign } from '../../src/lib/server/people';
 import { users } from '../../src/lib/server/db/schema';
-import { createEvent, dashboard, eventInput } from '../../src/lib/server/events';
+import { createEvent, dashboard, eventInput, updateEvent } from '../../src/lib/server/events';
 import {
 	addSection, addTask, deleteSection, deleteTask, listTasksBySection, moveSection, myTasks,
 	renameSection, setTaskStatus, taskInput, updateTask
@@ -143,5 +143,37 @@ describe('crew task visibility', () => {
 		db.update(users).set({ personId: null }).run();
 		assign(db, e, pid, { eventRole: '' });
 		expect(myTasks(db, crew)).toEqual([]);
+	});
+});
+
+describe('relative due dates follow the event', () => {
+	it('rescheduling recomputes offset tasks across the 2026-10-25 DST change; absolute tasks stay', () => {
+		const db = createTestDb();
+		const e = createEvent(db, eventInput.parse({ name: 'Show', type: 'gig', startDate: '2026-10-28', endDate: '2026-10-28' }));
+		const s = addSection(db, e, 'S');
+		addTask(db, e, s, t({ title: 'rel', dueDate: '2026-10-25', dueOffsetDays: 3 }));
+		addTask(db, e, s, t({ title: 'abs', dueDate: '2026-10-20' }));
+		const get = (n: string) => listTasksBySection(db, e)[0].tasks.find((x) => x.title === n)!;
+		const mv = (start: string) => updateEvent(db, e, eventInput.parse({ name: 'Show', type: 'gig', startDate: start, endDate: start }));
+		mv('2026-10-26');
+		expect(get('rel')).toMatchObject({ dueDate: '2026-10-23', dueOffsetDays: 3 });
+		mv('2026-10-27'); // crosses back over the clock change either way
+		expect(get('rel').dueDate).toBe('2026-10-24');
+		mv('2026-10-27');
+		expect(get('rel').dueDate).toBe('2026-10-24');
+		mv('2026-11-02');
+		expect(get('rel').dueDate).toBe('2026-10-30');
+		mv('2026-10-25');
+		expect(get('rel').dueDate).toBe('2026-10-22');
+		expect(get('abs').dueDate).toBe('2026-10-20');
+	});
+
+	it('editing a task to an absolute date clears the offset', () => {
+		const db = createTestDb();
+		const e = ev(db);
+		const s = addSection(db, e, 'S');
+		const id = addTask(db, e, s, t({ dueDate: '2026-03-07', dueOffsetDays: 3 }));
+		updateTask(db, id, t({ dueDate: '2026-03-01', dueOffsetDays: null }));
+		expect(listTasksBySection(db, e)[0].tasks[0]).toMatchObject({ dueDate: '2026-03-01', dueOffsetDays: null });
 	});
 });

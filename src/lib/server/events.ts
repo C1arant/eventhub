@@ -1,7 +1,7 @@
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { DB } from './db';
-import { assignments, eventDays, events } from './db/schema';
+import { assignments, eventDays, events, tasks } from './db/schema';
 import type { Actor } from './auth/can';
 import { EVENT_STATUSES, EVENT_TYPES } from '../event-meta';
 import { indexDoc, removeDoc } from './search';
@@ -73,7 +73,15 @@ export function createEvent(db: DB, input: EventInput): number {
 }
 
 export function updateEvent(db: DB, id: number, input: EventInput): void {
-	db.update(events).set(input).where(eq(events.id, id)).run();
+	db.transaction((tx) => {
+		const old = tx.select({ startDate: events.startDate }).from(events).where(eq(events.id, id)).get();
+		tx.update(events).set(input).where(eq(events.id, id)).run();
+		// Relative due dates ("N days before") follow the event when it is rescheduled.
+		if (old && old.startDate !== input.startDate) {
+			const rel = tx.select({ id: tasks.id, off: tasks.dueOffsetDays }).from(tasks).where(and(eq(tasks.eventId, id), isNotNull(tasks.dueOffsetDays))).all();
+			for (const t of rel) tx.update(tasks).set({ dueDate: addDays(input.startDate, -t.off!) }).where(eq(tasks.id, t.id)).run();
+		}
+	});
 	reindex(db, id, input);
 }
 

@@ -89,6 +89,8 @@ export const tasks = sqliteTable('tasks', {
 	title: text('title').notNull(),
 	ownerUserId: integer('owner_user_id').references(() => users.id),
 	dueDate: text('due_date'),
+	/** When set, the task is due this many days before the event's start date and follows it if rescheduled. */
+	dueOffsetDays: integer('due_offset_days'),
 	priority: text('priority').notNull().default('normal'),
 	status: text('status').notNull().default('todo'),
 	notes: text('notes').notNull().default(''),

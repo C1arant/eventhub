@@ -57,15 +57,18 @@ function ownTask(db: ReturnType<typeof getDb>, eid: number, raw: unknown) {
 
 const sectionName = z.string().trim().min(1, 'Name is required').max(100);
 
-/** Turn the due-date form fields into the value taskInput expects: absolute date, or "N days before start". */
+/**
+ * Turn the due-date form fields into what taskInput expects. "N days before start" stores both the
+ * offset (so the date follows a rescheduled event) and the computed date; an absolute date clears the offset.
+ */
 function withDue(values: Record<string, string>, eventStart: string): Record<string, string> {
 	if (values.dueMode === 'before') {
 		const n = values.dueBefore?.trim() ?? '';
-		if (n === '') return { ...values, dueDate: '' };
-		if (!/^\d{1,4}$/.test(n)) return { ...values, dueDate: 'invalid' };
-		return { ...values, dueDate: addDays(eventStart, -Number(n)) };
+		if (n === '') return { ...values, dueDate: '', dueOffsetDays: '' };
+		if (!/^\d{1,4}$/.test(n)) return { ...values, dueDate: 'invalid', dueOffsetDays: '' };
+		return { ...values, dueDate: addDays(eventStart, -Number(n)), dueOffsetDays: n };
 	}
-	return values;
+	return { ...values, dueOffsetDays: '' };
 }
 
 function parseTask(values: Record<string, string>, owners: { id: number }[], eventStart: string, currentOwner: number | null = null) {

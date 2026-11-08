@@ -88,7 +88,7 @@ export function saveAsTemplate(db: DB, eventId: number, name: string): number {
 				title: t.title,
 				priority: t.priority as 'low' | 'normal' | 'high',
 				notes: t.notes,
-				dueOffsetDays: t.dueDate ? diffDays(ev.startDate, t.dueDate) : null
+				dueOffsetDays: t.dueOffsetDays !== null ? -t.dueOffsetDays : t.dueDate ? diffDays(ev.startDate, t.dueDate) : null
 			}))
 		}))
 	};
@@ -159,7 +159,9 @@ export function instantiateTemplate(db: DB, templateId: number, input: { name: s
 					title: task.title,
 					priority: task.priority,
 					notes: task.notes,
-					dueDate: task.dueOffsetDays === null ? null : addDays(input.startDate, task.dueOffsetDays)
+					dueDate: task.dueOffsetDays === null ? null : addDays(input.startDate, task.dueOffsetDays),
+					// Template offsets are signed (negative = before start); keep "before" ones relative on the new event.
+					dueOffsetDays: task.dueOffsetDays !== null && task.dueOffsetDays <= 0 ? -task.dueOffsetDays : null
 				}));
 			}
 		}

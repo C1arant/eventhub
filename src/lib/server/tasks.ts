@@ -15,6 +15,8 @@ export const taskInput = z.object({
 	title: z.string().trim().min(1, 'Title is required').max(300),
 	ownerUserId: z.preprocess(blankToNull, z.coerce.number().int().positive().nullable()).default(null),
 	dueDate: z.preprocess(blankToNull, z.string().refine(isValidDate, 'Use a valid date').nullable()).default(null),
+	/** Days before the event's start; when set, dueDate follows the event if it is rescheduled. */
+	dueOffsetDays: z.preprocess(blankToNull, z.coerce.number().int().min(0, 'Use 0 or more days').max(3650).nullable()).default(null),
 	priority: z.enum(TASK_PRIORITIES).default('normal'),
 	status: z.enum(TASK_STATUSES).default('todo'),
 	notes: z.string().max(10_000).default('')
@@ -30,6 +32,7 @@ export type TaskRow = {
 	ownerUserId: number | null;
 	ownerName: string | null;
 	dueDate: string | null;
+	dueOffsetDays: number | null;
 	priority: string;
 	status: string;
 	notes: string;
@@ -46,6 +49,7 @@ const taskCols = {
 	ownerUserId: tasks.ownerUserId,
 	ownerName: users.name,
 	dueDate: tasks.dueDate,
+	dueOffsetDays: tasks.dueOffsetDays,
 	priority: tasks.priority,
 	status: tasks.status,
 	notes: tasks.notes

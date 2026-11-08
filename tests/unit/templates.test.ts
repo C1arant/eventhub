@@ -36,6 +36,20 @@ describe('templates', () => {
 		expect(listTasksBySection(db, id2)[0].tasks[0].dueDate).toBe('2027-03-27');
 	});
 
+	it('prefers a stored offset over the stale date, and keeps it relative on the new event', () => {
+		const db = createTestDb();
+		const src = source(db);
+		const sec = addSection(db, src, 'Rel');
+		// stale dueDate (as if the event moved without recompute) but offset says 5 days before
+		addTask(db, src, sec, taskInput.parse({ title: 'Rel', dueDate: '2026-01-01', dueOffsetDays: 5 }));
+		const tid = saveAsTemplate(db, src, 'T');
+		const id = instantiateTemplate(db, tid, { name: 'N', startDate: '2027-03-30' });
+		const rel = listTasksBySection(db, id).flatMap((g) => g.tasks).find((x) => x.title === 'Rel')!;
+		expect(rel).toMatchObject({ dueDate: '2027-03-25', dueOffsetDays: 5 });
+		const van = listTasksBySection(db, id).flatMap((g) => g.tasks).find((x) => x.title === 'Book van')!;
+		expect(van).toMatchObject({ dueDate: '2027-03-27', dueOffsetDays: 3 });
+	});
+
 	it('keeps day offsets, items, span, type; resets status/venue; no stray default day', () => {
 		const db = createTestDb();
 		const tid = saveAsTemplate(db, source(db), 'T');

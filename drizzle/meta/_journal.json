@@ -15,6 +15,13 @@
       "when": 1794163151049,
       "tag": "0001_fts_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794170353118,
+      "tag": "0002_smiling_domino",
+      "breakpoints": true
     }
   ]
 }

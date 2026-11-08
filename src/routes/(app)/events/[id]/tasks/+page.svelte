@@ -28,10 +28,10 @@
 	<fieldset class="grid grid-cols-2 gap-2">
 		<legend class="text-xs text-slate-500">Due</legend>
 		<label class="block"><span class="sr-only">Mode</span>
-			<select name="dueMode" class={inp}><option value="date">On date</option><option value="before">Days before event start</option></select></label>
+			<select name="dueMode" class={inp}><option value="date" selected={!((v.dueOffsetDays ?? '') !== '' || v.dueMode === 'before')}>On date</option><option value="before" selected={(v.dueOffsetDays ?? '') !== '' || v.dueMode === 'before'}>Days before event start</option></select></label>
 		<div class="grid grid-cols-2 gap-2">
 			<input name="dueDate" type="date" value={v.dueDate ?? ''} aria-label="Due date" class={inp} />
-			<input name="dueBefore" type="number" min="0" max="3650" placeholder="N days" aria-label="Days before event start" class={inp} />
+			<input name="dueBefore" type="number" min="0" max="3650" placeholder="N days" value={v.dueOffsetDays ?? v.dueBefore ?? ''} aria-label="Days before event start" class={inp} />
 		</div>
 	</fieldset>
 	<label class="block"><span class="text-xs text-slate-500">Notes</span><textarea name="notes" rows="2" class={inp}>{v.notes ?? ''}</textarea></label>
@@ -95,7 +95,7 @@
 								{#if data.canEdit}
 									<form method="POST" action="?/updateTask" use:enhance={keep} class="space-y-2 pb-3">
 										<input type="hidden" name="taskId" value={t.id} />
-										{@render taskFields({ title: t.title, ownerUserId: String(t.ownerUserId ?? ''), ownerName: t.ownerName ?? '', priority: t.priority, dueDate: t.dueDate ?? '', notes: t.notes }, `task${t.id}`)}
+										{@render taskFields({ title: t.title, ownerUserId: String(t.ownerUserId ?? ''), ownerName: t.ownerName ?? '', priority: t.priority, dueDate: t.dueDate ?? '', dueOffsetDays: t.dueOffsetDays === null ? '' : String(t.dueOffsetDays), notes: t.notes }, `task${t.id}`)}
 										<div class="flex gap-2">
 											<button class="btn-primary">Save task</button>
 											<button class="btn-secondary" formaction="?/setStatus" name="status" value={t.status === 'doing' ? 'todo' : 'doing'}>{t.status === 'doing' ? 'Stop' : 'Start'}</button>
