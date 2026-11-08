@@ -2,18 +2,24 @@
 	import { untrack } from 'svelte';
 	import LiveBoard, { type Snap } from '#lib/components/LiveBoard.svelte';
 	import { createLiveClient } from '#lib/live-client.js';
+	import { createSnapshotGate } from '#lib/live-accept.js';
 
 	let { data } = $props();
 	let snap = $state<Snap>(untrack(() => data.snapshot) as Snap);
 	let status = $state<'connected' | 'reconnecting' | 'denied'>('connected');
 
+	const gate = createSnapshotGate();
+
 	$effect(() => {
 		const c = createLiveClient<Snap>(
 			`/live/${data.dayId}/stream?t=${encodeURIComponent(data.token)}`,
 			(s) => {
-				if (s.state.version >= snap.state.version) snap = s;
+				if (gate.accepts(snap, s)) snap = s;
 			},
-			(s) => (status = s),
+			(s) => {
+				if (s === 'connected') gate.connected();
+				status = s;
+			},
 			`/live/${data.dayId}/check?t=${encodeURIComponent(data.token)}`
 		);
 		return () => c.close();

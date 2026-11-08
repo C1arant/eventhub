@@ -6,11 +6,11 @@ import { getDb } from '#lib/server/db/index.js';
 import { displayTokens } from '#lib/server/db/schema.js';
 import { getEvent } from '#lib/server/events.js';
 import { requireActor } from '#lib/server/guard.js';
-import { liveSnapshot } from '#lib/server/live/store.js';
+import { liveSnapshot, resetLive } from '#lib/server/live/store.js';
 import { wireSnapshot } from '#lib/server/live/trim.js';
 import { dayInEvent } from '#lib/server/ros.js';
 
-function ctx(locals: App.Locals, params: { id: string; dayId: string }, action: 'live:view' | 'guest:manage') {
+function ctx(locals: App.Locals, params: { id: string; dayId: string }, action: 'live:view' | 'guest:manage' | 'event:edit') {
 	const eventId = Number(params.id);
 	const dayId = Number(params.dayId);
 	if (!Number.isInteger(eventId) || eventId < 1) error(404, 'Event not found');
@@ -35,6 +35,11 @@ export const load = ({ locals, params }) => {
 };
 
 export const actions = {
+	resetLive: ({ locals, params }) => {
+		const { db, day } = ctx(locals, params, 'event:edit');
+		resetLive(db, day.id);
+		return { reset: true };
+	},
 	createDisplay: ({ locals, params, url }) => {
 		const { db, eventId, day } = ctx(locals, params, 'guest:manage');
 		const token = createDisplayToken(db, eventId);

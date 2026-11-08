@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import LiveBoard, { type Snap } from '#lib/components/LiveBoard.svelte';
 	import { createLiveClient } from '#lib/live-client.js';
+	import { createSnapshotGate, isNewer } from '#lib/live-accept.js';
 
 	let { data, form } = $props();
 	let snap = $state<Snap>(untrack(() => data.snapshot) as Snap);
@@ -15,14 +16,25 @@
 	let copied = $state(false);
 	let toastTimer: ReturnType<typeof setTimeout>;
 
+	const gate = createSnapshotGate();
 	const apply = (s: Snap) => {
-		if (s.state.version >= snap.state.version) snap = s;
+		if (isNewer(snap, s)) snap = s;
 	};
 	// Re-runs only when the day changes (the derived value is stable across data reloads).
 	$effect(() => {
 		const id = dayId;
 		snap = untrack(() => data.snapshot) as Snap;
-		const c = createLiveClient<Snap>(`/live/${id}/stream`, apply, (s) => (status = s), `/live/${id}/check`);
+		const c = createLiveClient<Snap>(
+			`/live/${id}/stream`,
+			(s) => {
+				if (gate.accepts(snap, s)) snap = s;
+			},
+			(s) => {
+				if (s === 'connected') gate.connected();
+				status = s;
+			},
+			`/live/${id}/check`
+		);
 		return () => c.close();
 	});
 
@@ -145,6 +157,15 @@
 	{/if}
 
 	{#if data.isOwner}
+		{#if st !== 'idle'}
+			<section class="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+				<h3 class="font-semibold">Rehearsal reset</h3>
+				<p class="text-sm text-slate-600 dark:text-slate-400">Clears this day's live state and log so the show can be started again. The report for this run is lost.</p>
+				<form method="POST" action="?/resetLive" use:enhance={({ cancel }) => { if (!confirm('Reset live for this day? The current run and its report will be erased.')) cancel(); return async ({ update }) => update({ reset: false }); }}>
+					<button class="{btn} text-red-600">Reset live</button>
+				</form>
+			</section>
+		{/if}
 		<section class="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
 			<h3 class="font-semibold">Stage display link</h3>
 			<form method="POST" action="?/createDisplay" use:enhance={() => async ({ update }) => update({ reset: false })}>
