@@ -3,6 +3,7 @@ import { getDb } from '#lib/server/db/index.js';
 import {
 	addDay, dayInput, deleteDay, deleteEvent, eventInput, getDay, listDays, updateDay, updateEvent
 } from '#lib/server/events.js';
+import { deleteEventFiles } from '#lib/server/files.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
 import { saveAsTemplate, TemplateError } from '#lib/server/templates/index.js';
@@ -28,6 +29,7 @@ export const actions = {
 	delete: async ({ locals, params }) => {
 		const id = eid(params);
 		requireActor(locals, 'event:edit', { eventId: id });
+		deleteEventFiles(getDb(), id);
 		deleteEvent(getDb(), id);
 		redirect(303, '/events');
 	},

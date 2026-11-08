@@ -6,11 +6,13 @@ import { actorFromCredentials } from '#lib/server/live/stream-auth.js';
 import { actorFromSession } from '#lib/server/auth/session-actor.js';
 import { hasOwner } from '#lib/server/auth/users.js';
 import { getDb } from '#lib/server/db/index.js';
+import { sweepOrphanUploads } from '#lib/server/files.js';
 import { seedStarters } from '#lib/server/templates/starters.js';
 
 // Runs once per server process, before the first request.
 export const init: ServerInit = () => {
 	seedStarters(getDb());
+	sweepOrphanUploads(getDb());
 };
 
 const ANON: Actor = { kind: 'anon' };

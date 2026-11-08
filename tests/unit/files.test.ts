@@ -1,11 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import { assignments, events, files, people } from '../../src/lib/server/db/schema';
 import {
-	contentDispositionFor, deleteFile, fileStream, getFile, guestCanDownload, listFiles, safeContentType, saveUpload
+	contentDispositionFor, deleteEventFiles, downloadHeaders, deleteFile, getFile, guestCanDownload, listFiles, openDownload, safeContentType, saveUpload, sweepOrphanUploads
 } from '../../src/lib/server/files';
 import type { GuestActor } from '../../src/lib/server/auth/can';
 
@@ -52,7 +52,8 @@ describe('saveUpload', () => {
 		expect(row.storedName).toMatch(/^[0-9a-f-]{36}$/);
 		expect(readdirSync(dir)).toEqual([row.storedName]);
 		let text = '';
-		for await (const c of fileStream(row, dir)) text += Buffer.from(c).toString();
+		const body = (await openDownload(row, dir))!;
+		for await (const c of body as unknown as AsyncIterable<Uint8Array>) text += Buffer.from(c).toString();
 		expect(text).toBe('hello');
 		expect(listFiles(db, ev.id).map((f) => f.id)).toEqual([id]);
 	});
@@ -82,11 +83,71 @@ describe('deleteFile', () => {
 	});
 });
 
-describe('path safety', () => {
-	it('fileStream refuses a stored name that escapes the uploads dir', () => {
-		const row = { storedName: '../x' } as never;
-		expect(() => fileStream(row, dir)).toThrow();
-		writeFileSync(join(dir, 'ok'), 'z');
+describe('path safety / missing file', () => {
+	it('openDownload refuses a stored name that escapes the uploads dir', async () => {
+		await expect(openDownload({ storedName: '../x' }, dir)).rejects.toThrow();
+	});
+	it('openDownload returns null when the file is gone from disk', async () => {
+		expect(await openDownload({ storedName: 'nope' }, dir)).toBeNull();
+	});
+});
+
+describe('write failures', () => {
+	it('rejects clearly, with no unhandled rejection and nothing left behind', async () => {
+		const { db, ev } = setup();
+		const unhandled: unknown[] = [];
+		const h = (e: unknown) => unhandled.push(e);
+		process.on('unhandledRejection', h);
+		// uploads "dir" is a regular file, so mkdir/open/write cannot succeed
+		const bad = join(dir, 'iamafile');
+		writeFileSync(bad, 'x');
+		await expect(saveUpload(db, { eventId: ev.id, file: new File(['abc'], 'a.txt') }, bad)).rejects.toThrow();
+		await new Promise((r) => setTimeout(r, 20));
+		process.off('unhandledRejection', h);
+		expect(unhandled).toEqual([]);
+		expect(readdirSync(dir)).toEqual(['iamafile']);
+		expect(db.select().from(files).all()).toEqual([]);
+	});
+	it('a stream that fails mid-upload gives "Could not save the file" and leaves no temp file', async () => {
+		const { db, ev } = setup();
+		const file = new File(['abc'], 'a.txt');
+		let n = 0;
+		file.stream = () => new ReadableStream({
+			pull(c) {
+				if (n++ === 0) c.enqueue(new Uint8Array([1, 2, 3]));
+				else c.error(new Error('ENOSPC'));
+			}
+		});
+		await expect(saveUpload(db, { eventId: ev.id, file }, dir)).rejects.toThrow('Could not save the file');
+		expect(readdirSync(dir)).toEqual([]);
+		expect(db.select().from(files).all()).toEqual([]);
+	});
+});
+
+describe('orphan sweep / event files', () => {
+	it('removes unreferenced files and stale temps, keeps referenced and fresh temps', async () => {
+		const { db, ev } = setup();
+		const id = await saveUpload(db, { eventId: ev.id, file: new File(['k'], 'k.txt') }, dir);
+		const keep = getFile(db, id)!.storedName;
+		writeFileSync(join(dir, 'orphan'), 'o');
+		writeFileSync(join(dir, 'old.tmp'), 'o');
+		writeFileSync(join(dir, 'fresh.tmp'), 'o');
+		const now = Date.now();
+		utimesSync(join(dir, 'old.tmp'), new Date(now - 2 * 3600_000), new Date(now - 2 * 3600_000));
+		expect(sweepOrphanUploads(db, dir, now)).toBe(2);
+		expect(readdirSync(dir).sort()).toEqual([keep, 'fresh.tmp'].sort());
+	});
+	it('missing uploads dir is fine', () => {
+		const { db } = setup();
+		expect(sweepOrphanUploads(db, join(dir, 'nope'))).toBe(0);
+	});
+	it('deleteEventFiles removes only the given event disk files', async () => {
+		const { db, ev, ev2 } = setup();
+		const a = await saveUpload(db, { eventId: ev.id, file: new File(['1'], 'a.txt') }, dir);
+		const b = await saveUpload(db, { eventId: ev2.id, file: new File(['2'], 'b.txt') }, dir);
+		deleteEventFiles(db, ev.id, dir);
+		expect(readdirSync(dir)).toEqual([getFile(db, b)!.storedName]);
+		expect(getFile(db, a)).toBeDefined();
 	});
 });
 
@@ -111,6 +172,9 @@ describe('headers', () => {
 			expect(safeContentType(m)).toBe(m);
 		for (const m of ['text/html', 'image/svg+xml', 'application/javascript', '', 'text/plain; charset=x'])
 			expect(safeContentType(m)).toBe('application/octet-stream');
+	});
+	it('downloads are private no-store', () => {
+		expect(downloadHeaders({ mime: 'text/plain', name: 'a', size: 1 } as never).get('cache-control')).toBe('private, no-store');
 	});
 	it('content-disposition is ascii-safe with filename*', () => {
 		const h = contentDispositionFor('Ríder "final"\r\nX: y.pdf');

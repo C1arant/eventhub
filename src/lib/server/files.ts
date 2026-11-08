@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, unlinkSync } from 'node:fs';
-import { rename, unlink } from 'node:fs/promises';
+import { createWriteStream, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { open, rename, unlink } from 'node:fs/promises';
 import { basename, resolve, sep } from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { eq, asc } from 'drizzle-orm';
 import type { GuestActor } from './auth/can';
 import { dataDir, type DB } from './db';
@@ -46,7 +47,8 @@ export function downloadHeaders(row: FileRow): Headers {
 		'Content-Type': safeContentType(row.mime),
 		'Content-Disposition': contentDispositionFor(row.name),
 		'Content-Length': String(row.size),
-		'X-Content-Type-Options': 'nosniff'
+		'X-Content-Type-Options': 'nosniff',
+		'Cache-Control': 'private, no-store'
 	});
 }
 
@@ -70,28 +72,21 @@ export async function saveUpload(
 	const final = pathFor(storedName, dir);
 	const tmp = pathFor(`${storedName}.tmp`, dir);
 	try {
-		// Stream to a temp file, counting bytes so a lying size can't exceed the cap.
+		// Stream to a temp file; the counting transform enforces the cap even if file.size lied.
 		let written = 0;
-		const out = createWriteStream(tmp, { flags: 'wx' });
-		const done = new Promise<void>((res, rej) => {
-			out.on('error', rej);
-			out.on('finish', res);
-		});
-		const reader = file.stream().getReader();
-		try {
-			for (;;) {
-				const { done: end, value } = await reader.read();
-				if (end) break;
-				written += value.byteLength;
-				if (written > MAX_UPLOAD_BYTES) throw new Error(TOO_LARGE);
-				if (!out.write(value)) await new Promise((r) => out.once('drain', r));
+		const counter = new Transform({
+			transform(chunk: Buffer, _enc, cb) {
+				written += chunk.length;
+				if (written > MAX_UPLOAD_BYTES) cb(new Error(TOO_LARGE));
+				else cb(null, chunk);
 			}
+		});
+		try {
+			await pipeline(Readable.fromWeb(file.stream() as never), counter, createWriteStream(tmp, { flags: 'wx' }));
 		} catch (e) {
-			out.destroy();
-			throw e;
+			if (e instanceof Error && e.message === TOO_LARGE) throw e;
+			throw new Error('Could not save the file', { cause: e });
 		}
-		out.end();
-		await done;
 		if (written === 0) throw new Error('File is empty');
 		await rename(tmp, final);
 		try {
@@ -122,13 +117,19 @@ export function getFile(db: DB, id: number): FileRow | undefined {
 	return db.select().from(files).where(eq(files.id, id)).get();
 }
 
-export function fileStream(row: Pick<FileRow, 'storedName'>, dir: string = uploadsDir()): Readable {
-	return createReadStream(pathFor(row.storedName, dir));
-}
-
-/** Web ReadableStream for a Response body (streams from disk, no buffering). */
-export function fileWebStream(row: FileRow, dir: string = uploadsDir()): ReadableStream {
-	return Readable.toWeb(fileStream(row, dir)) as unknown as ReadableStream;
+/**
+ * Open the stored file before any response is built. Returns a web stream reading from the
+ * open handle, or null if the file is gone from disk (callers answer 404).
+ */
+export async function openDownload(row: Pick<FileRow, 'storedName'>, dir: string = uploadsDir()): Promise<ReadableStream | null> {
+	let fh;
+	try {
+		fh = await open(pathFor(row.storedName, dir), 'r');
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+		throw e;
+	}
+	return Readable.toWeb(fh.createReadStream({ autoClose: true })) as unknown as ReadableStream;
 }
 
 export function deleteFile(db: DB, id: number, dir: string = uploadsDir()): void {
@@ -162,4 +163,41 @@ export function guestCanDownload(db: DB, actor: GuestActor, fileId: number): Fil
 	if (!row || row.assignmentId === null) return null;
 	if (row.assignmentId !== actor.assignmentId || row.eventId !== actor.eventId) return null;
 	return row;
+}
+
+/** Remove the disk files of every file row belonging to an event (call before deleting the event). */
+export function deleteEventFiles(db: DB, eventId: number, dir: string = uploadsDir()): void {
+	for (const f of db.select({ storedName: files.storedName }).from(files).where(eq(files.eventId, eventId)).all()) {
+		try {
+			unlinkSync(pathFor(f.storedName, dir));
+		} catch {
+			/* already gone */
+		}
+	}
+}
+
+/** Delete upload files with no matching row. Temp files younger than 1 h are left (in-flight uploads). */
+export function sweepOrphanUploads(db: DB, dir: string = uploadsDir(), now: number = Date.now()): number {
+	let names: string[];
+	try {
+		names = readdirSync(dir);
+	} catch {
+		return 0;
+	}
+	const known = new Set(db.select({ n: files.storedName }).from(files).all().map((r) => r.n));
+	let removed = 0;
+	for (const name of names) {
+		if (known.has(name)) continue;
+		try {
+			const full = pathFor(name, dir);
+			const st = statSync(full);
+			if (!st.isFile()) continue;
+			if (name.endsWith('.tmp') && now - st.mtimeMs < 3_600_000) continue;
+			unlinkSync(full);
+			removed++;
+		} catch {
+			/* ignore */
+		}
+	}
+	return removed;
 }
