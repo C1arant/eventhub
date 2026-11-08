@@ -81,3 +81,10 @@ describe('events', () => {
 		expect(todayLocal()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 	});
 });
+
+describe('eventInput dates', () => {
+	it('rejects impossible calendar dates', () => {
+		expect(eventInput.safeParse({ name: 'x', type: 'gig', startDate: '2026-02-31', endDate: '2026-03-01' }).success).toBe(false);
+		expect(eventInput.safeParse({ name: 'x', type: 'gig', startDate: '2026-03-01', endDate: '2026-13-01' }).success).toBe(false);
+	});
+});

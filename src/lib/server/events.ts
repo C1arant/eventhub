@@ -5,9 +5,11 @@ import { assignments, eventDays, events } from './db/schema';
 import type { Actor } from './auth/can';
 import { EVENT_STATUSES, EVENT_TYPES } from '../event-meta';
 import { indexDoc, removeDoc } from './search';
+import { addDays, isValidDate } from './util/dates';
+import { myTasks, type TaskRow } from './tasks';
 
 
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a valid date');
+const date = z.string().refine(isValidDate, 'Use a valid date');
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 19:00');
 
 export const eventInput = z
@@ -127,14 +129,14 @@ export function deleteDay(db: DB, id: number): { ok: true } | { ok: false; error
 	return { ok: true };
 }
 
-// TaskRow arrives with Task 6; until then the dashboard has no tasks to show.
-export type TaskRow = never;
-
 export function dashboard(db: DB, actor: Actor, today: string): { upcoming: EventSummary[]; myTasks: TaskRow[]; today: EventSummary[] } {
 	const visible = listEventsFor(db, actor);
 	return {
 		today: visible.filter((e) => e.startDate <= today && e.endDate >= today),
 		upcoming: visible.filter((e) => e.startDate > today).slice(0, 10),
-		myTasks: []
+		myTasks:
+			actor.kind === 'owner' || actor.kind === 'crew'
+				? myTasks(db, actor.user.id).filter((t) => t.dueDate !== null && t.dueDate <= addDays(today, 7))
+				: []
 	};
 }

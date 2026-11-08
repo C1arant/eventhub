@@ -18,3 +18,16 @@ describe('dates', () => {
 		expect(timeToMin('23:45')).toBe(1425);
 	});
 });
+
+describe('isValidDate', () => {
+	it('checks the real calendar', async () => {
+		const { isValidDate } = await import('../../src/lib/server/util/dates');
+		expect(isValidDate('2026-02-28')).toBe(true);
+		expect(isValidDate('2028-02-29')).toBe(true);
+		expect(isValidDate('2026-02-29')).toBe(false);
+		expect(isValidDate('2026-02-31')).toBe(false);
+		expect(isValidDate('2026-13-01')).toBe(false);
+		expect(isValidDate('2026-1-01')).toBe(false);
+		expect(isValidDate('nope')).toBe(false);
+	});
+});

@@ -47,3 +47,11 @@ export function todayLocal(now: Date = new Date()): string {
 	const d = String(now.getDate()).padStart(2, '0');
 	return `${y}-${m}-${d}`;
 }
+
+/** True only for a real calendar date written as YYYY-MM-DD (rejects 2026-02-31, 2026-13-01). */
+export function isValidDate(s: string): boolean {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+	if (!m) return false;
+	const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+	return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+}
