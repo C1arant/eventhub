@@ -43,6 +43,15 @@ function log(c: Conn, dayId: number, action: string, itemId: number | null, at: 
 	c.insert(liveLog).values({ dayId, action, itemId, at }).run();
 }
 
+/** Post-commit broadcast; a failure here must not make a committed change look failed. */
+function safePublish(db: DB, dayId: number, now: number) {
+	try {
+		publish(dayId, liveSnapshot(db, dayId, now));
+	} catch (err) {
+		console.error('live publish failed', err);
+	}
+}
+
 export function getLive(db: DB, dayId: number): LiveState {
 	return readState(db, dayId);
 }
@@ -56,11 +65,14 @@ export function dispatch(db: DB, dayId: number, action: LiveAction, clientVersio
 		let insertedId: number | null = null;
 
 		if (action.type === 'insertQuickItem') {
+			const title = typeof action.title === 'string' ? action.title.trim() : '';
+			const dur = action.durationSec;
+			if (title.length < 1 || title.length > 200 || !Number.isInteger(dur) || dur < 60 || dur > 86400) return { ok: false, reason: 'invalid', state };
 			if (state.status !== 'running' && state.status !== 'held') return { ok: false, reason: 'invalid', state };
 			const cur = items.findIndex((i) => i.id === state.currentItemId);
 			if (cur < 0) return { ok: false, reason: 'invalid', state };
 			insertedId = tx.insert(rosItems).values({
-				dayId, position: cur + 1, title: action.title, durationSec: action.durationSec, type: 'other'
+				dayId, position: cur + 1, title, durationSec: action.durationSec, type: 'other'
 			}).returning({ id: rosItems.id }).get().id;
 			const order = items.map((i) => i.id);
 			order.splice(cur + 1, 0, insertedId);
@@ -78,7 +90,7 @@ export function dispatch(db: DB, dayId: number, action: LiveAction, clientVersio
 		log(tx, dayId, logAction, touchesCurrent ? state.currentItemId : r.state.currentItemId, now);
 		return { ok: true, state: r.state };
 	});
-	if (result.ok) publish(dayId, liveSnapshot(db, dayId, now));
+	if (result.ok) safePublish(db, dayId, now);
 	return result;
 }
 
@@ -96,20 +108,12 @@ function moveOffDeleted(c: Conn, dayId: number, itemId: number, successorId: num
 
 /**
  * If the deleted item was current, move to the next item by position (started now), or finish if none.
- * Works whether or not the row is already gone: pass `successorId` (the item that followed it) when it is.
+ * `successorId` is the item that followed it in position order (null if it was last); it must be captured before deletion.
  * Publishes if live state changed.
  */
-export function onItemDeleted(db: DB, dayId: number, itemId: number, now: number = Date.now(), successorId?: number | null): void {
-	const changed = db.transaction((tx) => {
-		let succ = successorId;
-		if (succ === undefined) {
-			const ids = itemRows(tx, dayId).map((i) => i.id);
-			const i = ids.indexOf(itemId);
-			succ = i >= 0 ? (ids[i + 1] ?? null) : null;
-		}
-		return moveOffDeleted(tx, dayId, itemId, succ, now);
-	});
-	if (changed) publish(dayId, liveSnapshot(db, dayId, now));
+export function onItemDeleted(db: DB, dayId: number, itemId: number, successorId: number | null, now: number = Date.now()): void {
+	const changed = db.transaction((tx) => moveOffDeleted(tx, dayId, itemId, successorId, now));
+	if (changed) safePublish(db, dayId, now);
 }
 
 /** Delete a run-of-show item and keep live state valid, atomically. Returns { dayId } or null if the item did not exist. */
@@ -122,7 +126,7 @@ export function deleteItemLive(db: DB, itemId: number, now: number = Date.now())
 		deleteItem(tx as unknown as DB, itemId);
 		return moveOffDeleted(tx, it.dayId, itemId, successor, now);
 	});
-	if (changed) publish(it.dayId, liveSnapshot(db, it.dayId, now));
+	if (changed) safePublish(db, it.dayId, now);
 	return { dayId: it.dayId };
 }
 
@@ -154,7 +158,9 @@ export function liveSnapshot(db: DB, dayId: number, now: number = Date.now()): L
 	const ref = state.status === 'held' && state.heldAt !== null ? state.heldAt : now;
 	const elapsedMs = ref - state.currentStartedAt;
 	const durMs = cur.durationSec * 1000;
-	const projectedEnd = state.currentStartedAt + Math.max(elapsedMs, durMs);
+	// While held, the start slides forward with the hold so lateness keeps growing and matches the value after resume.
+	const effStart = state.status === 'held' && state.heldAt !== null ? state.currentStartedAt + (now - state.heldAt) : state.currentStartedAt;
+	const projectedEnd = effStart + Math.max(elapsedMs, durMs);
 	return {
 		state,
 		now: cur,

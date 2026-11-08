@@ -187,4 +187,51 @@ describe('live store', () => {
 		un();
 		un2();
 	});
+
+	it('overUnder keeps growing while held and equals the value right after resume', () => {
+		const db = createTestDb();
+		const { dayId } = mk(db, [10]);
+		go(db, dayId, 'start', DAY_START);
+		go(db, dayId, 'hold', DAY_START + 120_000);
+		expect(liveSnapshot(db, dayId, DAY_START + 120_000).overUnderSec).toBe(0);
+		expect(liveSnapshot(db, dayId, DAY_START + 12 * 60_000).overUnderSec).toBe(600);
+		expect(liveSnapshot(db, dayId, DAY_START + 17 * 60_000).overUnderSec).toBe(900);
+		go(db, dayId, 'resume', DAY_START + 12 * 60_000);
+		expect(liveSnapshot(db, dayId, DAY_START + 12 * 60_000).overUnderSec).toBe(600);
+	});
+
+	it('deleting the current item while held stays held, heldAt = now, and logs item_deleted', () => {
+		const db = createTestDb();
+		const { dayId, ids } = mk(db);
+		go(db, dayId, 'start', T0);
+		go(db, dayId, 'hold', T0 + 1000);
+		deleteItemLive(db, ids[0], T0 + 5000);
+		expect(getLive(db, dayId)).toMatchObject({ status: 'held', currentItemId: ids[1], currentStartedAt: T0 + 5000, heldAt: T0 + 5000 });
+		expect(db.select().from(liveLog).all().at(-1)).toMatchObject({ action: 'item_deleted', itemId: ids[1], at: T0 + 5000 });
+	});
+
+	it('next while held resumes running on the next item', () => {
+		const db = createTestDb();
+		const { dayId, ids } = mk(db);
+		go(db, dayId, 'start', T0);
+		go(db, dayId, 'hold', T0 + 1000);
+		go(db, dayId, 'next', T0 + 2000);
+		expect(getLive(db, dayId)).toMatchObject({ status: 'running', currentItemId: ids[1], currentStartedAt: T0 + 2000, heldAt: null });
+	});
+
+	it('insertQuickItem validates its payload and writes nothing when rejected', () => {
+		const db = createTestDb();
+		const { dayId } = mk(db);
+		go(db, dayId, 'start');
+		for (const bad of [
+			{ title: '   ', durationSec: 60 }, { title: 'x'.repeat(201), durationSec: 60 },
+			{ title: 'ok', durationSec: 59 }, { title: 'ok', durationSec: 86401 }, { title: 'ok', durationSec: 90.5 }
+		]) {
+			expect(go(db, dayId, 'insertQuickItem', T0, bad)).toMatchObject({ ok: false, reason: 'invalid' });
+		}
+		expect(listItems(db, dayId)).toHaveLength(3);
+		expect(getLive(db, dayId).version).toBe(1);
+		expect(go(db, dayId, 'insertQuickItem', T0, { title: '  Trim me ', durationSec: 60 }).ok).toBe(true);
+		expect(listItems(db, dayId)[1].title).toBe('Trim me');
+	});
 });
