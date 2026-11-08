@@ -1,9 +1,15 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts
-// for information about these interfaces
+import type { Actor } from '#lib/server/auth/can.js';
+
 declare global {
 	namespace App {
-		// interface Error {}
-		// interface Locals {}
+		interface Error {
+			message: string;
+			requestId?: string;
+		}
+		interface Locals {
+			actor: Actor;
+			requestId: string;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}

@@ -110,3 +110,33 @@ export function getUserByEmail(db: DB, email: string): User | null {
 		.get();
 	return row ? toUser(row) : null;
 }
+
+/** Internal: password hash for login only. Never expose to clients. */
+export function getPasswordHashForEmail(db: DB, email: string): string | null {
+	const row = db
+		.select({ h: users.passwordHash })
+		.from(users)
+		.where(sql`lower(${users.email}) = ${normEmail(email)}`)
+		.get();
+	return row?.h ?? null;
+}
+
+export function listUsers(db: DB): User[] {
+	return db.select().from(users).orderBy(users.id).all().map(toUser);
+}
+
+/** Look up an invite without consuming it. Returns null when invalid, used or expired. */
+export function peekInvite(db: DB, token: string, now: number): { email: string } | null {
+	const inv = db.select().from(invites).where(eq(invites.tokenHash, hashToken(token))).get();
+	if (!inv || inv.usedAt !== null || inv.expiresAt <= now) return null;
+	return { email: inv.email };
+}
+
+/** True if the error is a SQLite UNIQUE constraint failure (possibly wrapped). */
+export function isUniqueViolation(e: unknown): boolean {
+	for (let err: any = e, i = 0; err && i < 4; err = err.cause, i++) {
+		if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/i.test(err.message ?? ''))
+			return true;
+	}
+	return false;
+}
