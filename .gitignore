@@ -24,3 +24,4 @@ vite.config.ts.timestamp-*
 /data
 /backups
 /test-results
+/playwright-report
