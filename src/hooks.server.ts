@@ -2,8 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '#lib/server/auth/can.js';
-import { SESSION_COOKIE } from '#lib/server/auth/cookie.js';
-import { validateSession } from '#lib/server/auth/sessions.js';
+import { actorFromSession } from '#lib/server/auth/session-actor.js';
 import { hasOwner } from '#lib/server/auth/users.js';
 import { getDb } from '#lib/server/db/index.js';
 
@@ -18,20 +17,9 @@ function isExempt(path: string): boolean {
 	);
 }
 
-/** Actor source: session cookie -> owner/crew. Others resolve to anon. */
-function actorFromSession(event: Parameters<Handle>[0]['event']): Actor {
-	const token = event.cookies.get(SESSION_COOKIE);
-	if (!token) return ANON;
-	const user = validateSession(getDb(), token);
-	if (!user) return ANON;
-	if (user.role === 'owner') return { kind: 'owner', user };
-	if (user.role === 'crew') return { kind: 'crew', user };
-	return ANON;
-}
-
 // Later tasks add: actorFromGuestToken (/g/[token]), actorFromDisplayToken, live ?t=.
 function resolveActor(event: Parameters<Handle>[0]['event']): Actor {
-	return actorFromSession(event);
+	return actorFromSession(getDb(), event.cookies, event.url);
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
