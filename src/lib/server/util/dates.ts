@@ -39,3 +39,11 @@ export function minToClock(min: number): { clock: string; dayOffset: number } {
 	const mm = String(rem % 60).padStart(2, '0');
 	return { clock: `${h}:${mm}`, dayOffset };
 }
+
+/** Today's date in the server's local time zone as YYYY-MM-DD (never UTC). */
+export function todayLocal(now: Date = new Date()): string {
+	const y = String(now.getFullYear()).padStart(4, '0');
+	const m = String(now.getMonth() + 1).padStart(2, '0');
+	const d = String(now.getDate()).padStart(2, '0');
+	return `${y}-${m}-${d}`;
+}
