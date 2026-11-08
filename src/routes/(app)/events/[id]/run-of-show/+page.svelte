@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { deserialize, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { dndzone } from 'svelte-dnd-action';
@@ -30,8 +30,13 @@
 		const fd = new FormData();
 		fd.set('dayId', String(data.day.id));
 		fd.set('order', JSON.stringify(list.map((i) => i.id)));
-		const res = await fetch('?/reorder', { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
-		reorderError = res.ok ? '' : 'Could not save the new order. Reload and try again.';
+		try {
+			const res = await fetch('?/reorder', { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
+			const result = deserialize(await res.text());
+			reorderError = result.type === 'success' ? '' : "Couldn't save the new order — the list was refreshed";
+		} catch {
+			reorderError = "Couldn't save the new order — the list was refreshed";
+		}
 		await invalidateAll();
 	}
 </script>

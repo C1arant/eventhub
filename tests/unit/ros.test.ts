@@ -35,6 +35,26 @@ describe('computeTimes', () => {
 		expect(t[1].conflict).toBe(false);
 	});
 
+	it('handles two midnight crossings in one day', () => {
+		const db = createTestDb();
+		const { day } = mk(db);
+		for (const m of [180, 180, 60]) addItem(db, day.id, inp({ durationMin: m }));
+		const t = computeTimes('22:00', listItems(db, day.id));
+		expect(t.map((x) => x.clock)).toEqual(['22:00', '01:00', '04:00']);
+		expect(t.map((x) => x.dayOffset)).toEqual([0, 1, 1]);
+	});
+
+	it('hard start 01:00 on a non-first item after a 23:00 cursor is next day, no conflict', () => {
+		const db = createTestDb();
+		const { day } = mk(db);
+		addItem(db, day.id, inp({ durationMin: 60 })); // 22:00 -> 23:00
+		addItem(db, day.id, inp({ hardStart: '01:00' }));
+		const t = computeTimes('22:00', listItems(db, day.id));
+		expect(t[1].clock).toBe('01:00');
+		expect(t[1].dayOffset).toBe(1);
+		expect(t[1].conflict).toBe(false);
+	});
+
 	it('hard start earlier than the cursor is a conflict', () => {
 		const db = createTestDb();
 		const { day } = mk(db);
@@ -66,6 +86,11 @@ describe('ros items', () => {
 		expect(reorderItems(db, day.id, [a, b])).toBe(false);
 		expect(reorderItems(db, day.id, [a, a, b])).toBe(false);
 		expect(reorderItems(db, day.id, [a, b, 9999])).toBe(false);
+		const other = mk(db, 'Other');
+		const foreign = addItem(db, other.day.id, inp({ title: 'f' }));
+		expect(reorderItems(db, day.id, [c, a, foreign])).toBe(false);
+		expect(listItems(db, day.id).map((x) => x.title)).toEqual(['c', 'a', 'b']);
+		expect(listItems(db, other.day.id).map((x) => x.id)).toEqual([foreign]);
 	});
 
 	it('deleteItem renumbers and returns the dayId', () => {
