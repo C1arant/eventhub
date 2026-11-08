@@ -36,6 +36,20 @@ describe('stillAllowed', () => {
 	});
 });
 
+describe('stillAllowed with a deleted day', () => {
+	it('closes an owner stream once the day is gone', async () => {
+		const db = createTestDb();
+		const e = createEvent(db, eventInput.parse({ name: 'S', type: 'club', startDate: '2026-03-10', endDate: '2026-03-10' }));
+		const { addDay, deleteDay } = await import('../../src/lib/server/events');
+		const extra = addDay(db, e, { label: 'Two', date: '2026-03-11', startTime: '19:00' } as never);
+		const owner = await createOwner(db, { name: 'O', email: 'o@x.co', password: 'password-long-1' });
+		const tok = createSession(db, owner.id);
+		expect(stillAllowed(db, { session: tok }, extra, Date.now())).toBe(true);
+		deleteDay(db, extra);
+		expect(stillAllowed(db, { session: tok }, extra, Date.now())).toBe(false);
+	});
+});
+
 describe('peekSession / heartbeat', () => {
 	it('does not slide the session expiry', async () => {
 		const { peekSession } = await import('../../src/lib/server/auth/sessions');

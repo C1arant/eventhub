@@ -2,6 +2,7 @@ import { can, type Actor } from '../auth/can.js';
 import type { DB } from '../db/index.js';
 import { resolveDisplayToken, resolveGuestToken } from '../auth/guests.js';
 import { peekSession } from '../auth/sessions.js';
+import { getDay } from '../ros.js';
 
 export type StreamCredentials = { session?: string | null; token?: string | null };
 
@@ -18,6 +19,7 @@ export function actorFromCredentials(db: DB, c: StreamCredentials, now: number):
 
 /** Called on every heartbeat: is this stream still allowed to see the day? */
 export function stillAllowed(db: DB, c: StreamCredentials, dayId: number, now: number): boolean {
+	if (!getDay(db, dayId)) return false;
 	return can(db, actorFromCredentials(db, c, now), 'live:view', { dayId });
 }
 
