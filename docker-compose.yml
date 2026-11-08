@@ -4,7 +4,12 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"   # localhost only; tunnels reach it over the compose network
-    env_file: .env
+    # Only the vars the app needs; tunnel secrets stay out of this container.
+    environment:
+      TZ: ${TZ:-Europe/London}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      ADDRESS_HEADER: ${ADDRESS_HEADER:-}
+      XFF_DEPTH: ${XFF_DEPTH:-1}
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups

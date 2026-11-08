@@ -5,4 +5,4 @@ Description=EventHub backup (SQLite + uploads)
 Type=oneshot
 # Adjust the path to where you put the repo.
 WorkingDirectory=%h/eventhub
-ExecStart=%h/eventhub/scripts/backup.sh
+ExecStart=/usr/bin/bash %h/eventhub/scripts/backup.sh

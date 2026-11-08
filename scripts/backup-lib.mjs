@@ -1,7 +1,7 @@
 // Pure helpers for backup retention. Folder names are YYYY-MM-DD (local date of the backup).
 const DATE_DIR = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** Returns the folder names that are older than `keepDays` days relative to `today` (YYYY-MM-DD). Ignores non-date names. */
+/** Returns the folder names outside the newest `keepDays` daily folders (today + keepDays-1 previous days) relative to `today` (YYYY-MM-DD). Ignores non-date names. */
 export function foldersToPrune(names, today, keepDays = 14) {
 	const toDay = (s) => {
 		const m = DATE_DIR.exec(s);
@@ -11,7 +11,7 @@ export function foldersToPrune(names, today, keepDays = 14) {
 	if (now === null) throw new Error(`Bad date: ${today}`);
 	return names.filter((n) => {
 		const d = toDay(n);
-		return d !== null && now - d > keepDays;
+		return d !== null && now - d >= keepDays;
 	});
 }
 

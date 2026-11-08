@@ -28,12 +28,15 @@ Either `git clone <your-own-remote-url> ~/eventhub`, or copy the project folder 
 
 ```bash
 cd ~/eventhub
+mkdir -p data backups
 cp .env.example .env
 $EDITOR .env          # set PUBLIC_URL, ADDRESS_HEADER (see below), tunnel secrets
 docker compose up -d --build
 ```
 
 Open <http://localhost:3000/setup> and create the owner account. There are no default credentials. Check health with `curl localhost:3000/healthz` (prints `ok`) or `docker compose ps` (should say healthy).
+
+The `mkdir` matters: if Docker has to create the folders it makes them root-owned. The image's entrypoint repairs ownership of `data` and `backups` on start (it chowns them to the container's `node` user, uid 1000, then drops privileges), but creating them yourself keeps them owned by you.
 
 The app only listens on `127.0.0.1:3000` of the host. Only this PC and the tunnel containers (over the compose network, at `http://app:3000`) can reach it.
 
@@ -82,10 +85,10 @@ The app is offline whenever the PC sleeps. Omarchy's Hyprland idle daemon (hypri
 
 ## 7. Backups
 
-`scripts/backup.mjs` makes a consistent online copy of the SQLite database (better-sqlite3 `.backup()`) and copies `data/uploads` into `./backups/YYYY-MM-DD/`, then deletes folders older than 14 days. Run it by hand:
+`scripts/backup.mjs` makes a consistent online copy of the SQLite database (better-sqlite3 `.backup()`) and copies `data/uploads` into `./backups/YYYY-MM-DD/`, then keeps only the newest 14 daily folders. Run it by hand:
 
 ```bash
-./scripts/backup.sh          # same as: docker compose exec app node scripts/backup.mjs
+./scripts/backup.sh          # same as: docker compose exec -u node app node scripts/backup.mjs
 ```
 
 Daily at 03:30 with a systemd user timer (the unit assumes the repo is at `~/eventhub`; edit `WorkingDirectory`/`ExecStart` if not):
@@ -97,7 +100,11 @@ systemctl --user daemon-reload
 systemctl --user enable --now eventhub-backup.timer
 loginctl enable-linger $USER      # run even when you are logged out
 systemctl --user list-timers      # confirm
+systemctl --user status eventhub-backup   # result of the last run
+journalctl --user -u eventhub-backup -e   # its output
 ```
+
+A backup run exits non-zero (and the service shows `failed`) if the app container is not running, because it runs inside it. Start the app and run `./scripts/backup.sh` again.
 
 Also copy `./backups` somewhere off this PC now and then (external disk, cloud storage); a backup on the same disk does not survive a disk failure.
 
@@ -133,6 +140,6 @@ Use the date you want. The backup is a single file, so there are no `-wal`/`-shm
 - Logs: `docker compose logs -f app` (or `cloudflared` / `tailscale`).
 - **403 on every form submit**: the app believes the request protocol differs from the browser's. Check the tunnel sends `x-forwarded-proto` and that you did not override `PROTOCOL_HEADER`.
 - **"Too many attempts" for everyone**: `ADDRESS_HEADER` is not set for your tunnel (see the table above), so all visitors share one IP. Fix `.env`, then `docker compose up -d`. Lockouts clear on their own within 15 minutes.
-- **Permission denied writing `/app/data`**: `sudo chown -R 1000:1000 data backups`.
+- **Permission denied writing `/app/data`**: normally repaired by the entrypoint; otherwise `sudo chown -R 1000:1000 data backups`.
 - **Tunnel up but site unreachable**: confirm the public hostname service is `http://app:3000` (not `localhost`).
 - **Site offline overnight**: the PC suspended; see "Keep the PC awake".
