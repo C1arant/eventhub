@@ -7,7 +7,7 @@
 	let { data, form } = $props();
 	let snap = $state<Snap>(untrack(() => data.snapshot) as Snap);
 	const dayId = $derived(data.day.id);
-	let status = $state<'connected' | 'reconnecting'>('connected');
+	let status = $state<'connected' | 'reconnecting' | 'denied'>('connected');
 	let toast = $state('');
 	let busy = $state(false);
 	let qTitle = $state('');
@@ -22,7 +22,7 @@
 	$effect(() => {
 		const id = dayId;
 		snap = untrack(() => data.snapshot) as Snap;
-		const c = createLiveClient<Snap>(`/live/${id}/stream`, apply, (s) => (status = s));
+		const c = createLiveClient<Snap>(`/live/${id}/stream`, apply, (s) => (status = s), `/live/${id}/check`);
 		return () => c.close();
 	});
 
@@ -101,9 +101,12 @@
 <div class="mx-auto max-w-2xl space-y-4">
 	<div class="flex items-center gap-2">
 		<h2 class="flex-1 text-lg font-semibold">{data.day.label || 'Day'} · {data.day.date}</h2>
-		{#if status === 'reconnecting'}
+		{#if status === 'denied'}
+			<span class="rounded-full bg-red-500/20 px-3 py-1 text-sm font-semibold text-red-600">You no longer have access</span>
+		{:else if status === 'reconnecting'}
 			<span class="rounded-full bg-amber-500/20 px-3 py-1 text-sm font-semibold text-amber-600">Reconnecting…</span>
 		{/if}
+		<a class="text-sm text-indigo-600 underline" href="{data.day.id}/display" target="_blank" rel="noopener">Full-screen display</a>
 		<a class="text-sm text-indigo-600 underline" href="{data.day.id}/report">Report</a>
 	</div>
 

@@ -56,10 +56,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 	return response;
 };
 
+/** Never log capability tokens that live in the path. */
+export function redactPath(path: string): string {
+	return path.replace(/^\/(display|g)\/[^/]+/, '/$1/[redacted]');
+}
+
 export const handleError: HandleServerError = ({ kind, error, event }) => {
 	const requestId = event.locals?.requestId ?? randomUUID();
 	if (kind === 'unknown') {
-		console.error(JSON.stringify({ requestId, path: event.url.pathname, error: String(error) }), error);
+		console.error(JSON.stringify({ requestId, path: redactPath(event.url.pathname), error: String(error) }), error);
 		return { message: 'Something went wrong', requestId };
 	}
 	// app/framework errors (404, 403, ...) keep their own message

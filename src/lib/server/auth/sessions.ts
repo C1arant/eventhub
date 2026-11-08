@@ -72,3 +72,22 @@ export function deleteSession(db: DB, token: string): void {
 export function deleteAllSessions(db: DB, userId: number): void {
 	db.delete(sessions).where(eq(sessions.userId, userId)).run();
 }
+
+/** Read-only session check: validates without sliding the expiry or deleting anything (for heartbeats). */
+export function peekSession(db: DB, token: string, now = Date.now()): User | null {
+	const row = db
+		.select({
+			expiresAt: sessions.expiresAt,
+			id: users.id,
+			email: users.email,
+			name: users.name,
+			role: users.role,
+			personId: users.personId
+		})
+		.from(sessions)
+		.innerJoin(users, eq(users.id, sessions.userId))
+		.where(eq(sessions.id, hashToken(token)))
+		.get();
+	if (!row || row.expiresAt <= now) return null;
+	return { id: row.id, email: row.email, name: row.name, role: row.role, personId: row.personId };
+}

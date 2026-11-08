@@ -1,4 +1,4 @@
-export type LiveStatusEvent = 'connected' | 'reconnecting';
+export type LiveStatusEvent = 'connected' | 'reconnecting' | 'denied';
 
 export const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000] as const;
 
@@ -9,7 +9,9 @@ export const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000] as const;
 export function createLiveClient<T = unknown>(
 	url: string,
 	onState: (s: T) => void,
-	onStatus: (s: LiveStatusEvent) => void
+	onStatus: (s: LiveStatusEvent) => void,
+	/** Optional URL answering 200 while access is valid and 403/404 once it is revoked; checked after each stream error. */
+	checkUrl?: string
 ): { close(): void } {
 	let es: EventSource | null = null;
 	let attempt = 0;
@@ -36,9 +38,23 @@ export function createLiveClient<T = unknown>(
 			source.close();
 			if (closed) return;
 			onStatus('reconnecting');
-			const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
-			attempt++;
-			timer = setTimeout(connect, delay);
+			const schedule = () => {
+				if (closed) return;
+				const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
+				attempt++;
+				timer = setTimeout(connect, delay);
+			};
+			if (!checkUrl) return schedule();
+			// A revoked link/session is terminal: stop retrying instead of hammering the server.
+			fetch(checkUrl, { cache: 'no-store' })
+				.then((r) => {
+					if (closed) return;
+					if (r.status === 404 || r.status === 403 || r.status === 401) {
+						closed = true;
+						onStatus('denied');
+					} else schedule();
+				})
+				.catch(schedule);
 		};
 	};
 	connect();

@@ -1,14 +1,14 @@
 import { can, type Actor } from '../auth/can.js';
 import type { DB } from '../db/index.js';
 import { resolveDisplayToken, resolveGuestToken } from '../auth/guests.js';
-import { validateSession } from '../auth/sessions.js';
+import { peekSession } from '../auth/sessions.js';
 
 export type StreamCredentials = { session?: string | null; token?: string | null };
 
 /** Re-resolve the actor from the credentials the stream was opened with. A valid session wins; otherwise the token is tried (mirrors hooks). */
 export function actorFromCredentials(db: DB, c: StreamCredentials, now: number): Actor {
 	if (c.session) {
-		const user = validateSession(db, c.session, now);
+		const user = peekSession(db, c.session, now);
 		if (user?.role === 'owner') return { kind: 'owner', user };
 		if (user?.role === 'crew') return { kind: 'crew', user };
 	}

@@ -4,6 +4,7 @@ import { can } from '#lib/server/auth/can.js';
 import { getDb } from '#lib/server/db/index.js';
 import { subscribe } from '#lib/server/live/hub.js';
 import { stillAllowed } from '#lib/server/live/stream-auth.js';
+import { getDay } from '#lib/server/ros.js';
 import { liveSnapshot, type LiveSnapshot } from '#lib/server/live/store.js';
 import { wireSnapshot } from '#lib/server/live/trim.js';
 
@@ -14,7 +15,7 @@ export const GET = ({ locals, params, url, cookies, request }) => {
 	if (!Number.isInteger(dayId) || dayId < 1) error(404, 'Not found');
 	const db = getDb();
 	// Never reveal whether the day exists to someone who may not view it.
-	if (!can(db, locals.actor, 'live:view', { dayId })) error(404, 'Not found');
+	if (!getDay(db, dayId) || !can(db, locals.actor, 'live:view', { dayId })) error(404, 'Not found');
 
 	const creds = { session: cookies.get(SESSION_COOKIE), token: url.searchParams.get('t') };
 	const enc = new TextEncoder();

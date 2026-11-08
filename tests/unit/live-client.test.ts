@@ -71,4 +71,25 @@ describe('createLiveClient', () => {
 		vi.advanceTimersByTime(20000);
 		expect(FakeES.all.length).toBe(n + 1);
 	});
+
+	it('stops retrying and reports denied when the check answers 404', async () => {
+		const status: string[] = [];
+		vi.stubGlobal('fetch', vi.fn(async () => ({ status: 404 })));
+		createLiveClient('/x', () => {}, (s) => status.push(s), '/check');
+		FakeES.all.at(-1)!.onerror!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(status).toEqual(['reconnecting', 'denied']);
+		const n = FakeES.all.length;
+		await vi.advanceTimersByTimeAsync(60000);
+		expect(FakeES.all.length).toBe(n);
+	});
+
+	it('keeps retrying when the check says access is still valid', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => ({ status: 200 })));
+		createLiveClient('/x', () => {}, () => {}, '/check');
+		const n = FakeES.all.length;
+		FakeES.all.at(-1)!.onerror!();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(FakeES.all.length).toBe(n + 1);
+	});
 });

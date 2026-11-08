@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fmtClock, fmtOverUnder } from '#lib/live-format.js';
+	import { overUnderNow, remainingNow } from '#lib/live-math.js';
 
 	type Item = { id: number; title: string; type: string; durationSec: number; people?: string | null; clock?: string };
 	export type Snap = {
@@ -26,21 +27,8 @@
 		return () => clearInterval(t);
 	});
 
-	const running = $derived(snap.state.status === 'running' && snap.now !== null && snap.state.currentStartedAt !== null);
-	const remaining = $derived.by(() => {
-		if (snap.remainingSec === null || !snap.now) return null;
-		if (!running) return snap.remainingSec; // held: frozen
-		const end = snap.state.currentStartedAt! + snap.now.durationSec * 1000;
-		return Math.round((end - (tick + skewMs)) / 1000);
-	});
-	const overUnder = $derived.by(() => {
-		let v = snap.overUnderSec;
-		// Once the item overruns, lateness grows one-for-one with the clock.
-		if (running && remaining !== null && snap.remainingSec !== null) {
-			v += Math.max(0, -remaining) - Math.max(0, -snap.remainingSec);
-		}
-		return v;
-	});
+	const remaining = $derived(remainingNow(snap, tick, skewMs));
+	const overUnder = $derived(overUnderNow(snap, tick, skewMs));
 	const ou = $derived(fmtOverUnder(overUnder));
 	const over = $derived(remaining !== null && remaining < 0);
 	const tone = { late: 'text-red-500', early: 'text-emerald-500', ontime: 'opacity-70' };

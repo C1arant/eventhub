@@ -35,3 +35,24 @@ describe('stillAllowed', () => {
 		expect(stillAllowed(db, { session: tok }, day.id, Date.now())).toBe(false);
 	});
 });
+
+describe('peekSession / heartbeat', () => {
+	it('does not slide the session expiry', async () => {
+		const { peekSession } = await import('../../src/lib/server/auth/sessions');
+		const { sessions } = await import('../../src/lib/server/db/schema');
+		const db = createTestDb();
+		const owner = await createOwner(db, { name: 'O', email: 'o@x.co', password: 'password-long-1' });
+		const now = Date.now();
+		const tok = createSession(db, owner.id, now - 5 * 86400_000);
+		const before = db.select().from(sessions).get()!.expiresAt;
+		expect(peekSession(db, tok, now)?.id).toBe(owner.id);
+		expect(db.select().from(sessions).get()!.expiresAt).toBe(before);
+		expect(peekSession(db, tok, before + 1)).toBeNull();
+	});
+	it('redacts tokens in logged paths', async () => {
+		const { redactPath } = await import('../../src/hooks.server');
+		expect(redactPath('/display/SECRET/3')).toBe('/display/[redacted]/3');
+		expect(redactPath('/g/SECRET/live/3')).toBe('/g/[redacted]/live/3');
+		expect(redactPath('/events/1')).toBe('/events/1');
+	});
+});
