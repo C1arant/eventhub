@@ -14,7 +14,7 @@ export type GuestView = {
 	address: string;
 	days: { id: number; label: string; date: string }[];
 	callTime: string | null;
-	dayCalls: { dayLabel: string; date: string; callTime: string }[];
+	dayCalls: { dayId: number; dayLabel: string; date: string; callTime: string }[];
 	mySlots: GuestSlot[];
 	contact: { name: string; phone: string } | null;
 	files: { id: number; name: string }[];
@@ -30,7 +30,7 @@ export function peopleNames(text: string): string[] {
  * Everything one guest may see. Built field by field: nothing is spread from a DB row,
  * so a new column can never leak by accident.
  */
-export function guestView(db: DB, actor: GuestActor, token?: string): GuestView {
+export function guestView(db: DB, actor: GuestActor, token: string): GuestView {
 	const ev = getEvent(db, actor.eventId);
 	if (!ev) throw new Error('Event not found');
 	const me = db.select({ name: people.name }).from(people).where(eq(people.id, actor.personId)).get();
@@ -45,7 +45,7 @@ export function guestView(db: DB, actor: GuestActor, token?: string): GuestView 
 		.all()
 		.flatMap((c) => {
 			const d = days.find((x) => x.id === c.dayId);
-			return d ? [{ dayLabel: d.label, date: d.date, callTime: c.callTime }] : [];
+			return d ? [{ dayId: d.id, dayLabel: d.label, date: d.date, callTime: c.callTime }] : [];
 		})
 		.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -59,14 +59,14 @@ export function guestView(db: DB, actor: GuestActor, token?: string): GuestView 
 		}
 	}
 
-	// The link the guest arrived by decides the contact; without a token, the newest live link with one.
+	// Only the link the guest arrived by decides the contact; sibling links never leak theirs.
 	const linkRows = db
 		.select({ contactPersonId: guestLinks.contactPersonId, tokenHash: guestLinks.tokenHash })
 		.from(guestLinks)
 		.where(and(eq(guestLinks.assignmentId, actor.assignmentId), isNull(guestLinks.revokedAt)))
 		.orderBy(desc(guestLinks.id))
 		.all();
-	const link = token ? linkRows.find((l) => l.tokenHash === hashToken(token)) : linkRows.find((l) => l.contactPersonId !== null);
+	const link = linkRows.find((l) => l.tokenHash === hashToken(token));
 	let contact: GuestView['contact'] = null;
 	if (link?.contactPersonId) {
 		// Only someone actually on this event can be shown.

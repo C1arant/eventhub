@@ -5,7 +5,7 @@ import { liveSnapshot } from '#lib/server/live/store.js';
 import { wireSnapshot } from '#lib/server/live/trim.js';
 import { dayInEvent } from '#lib/server/ros.js';
 
-export const load = ({ params, setHeaders }) => {
+export const load = ({ params }) => {
 	const db = getDb();
 	const dayId = Number(params.dayId);
 	const actor = resolveGuestToken(db, params.token, Date.now());
@@ -13,6 +13,5 @@ export const load = ({ params, setHeaders }) => {
 	if (!actor || !actor.liveAccess || !Number.isInteger(dayId) || !dayInEvent(db, actor.eventId, dayId)) {
 		error(404, 'This link is no longer valid');
 	}
-	setHeaders({ 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' });
 	return { token: params.token, dayId, snapshot: wireSnapshot(liveSnapshot(db, dayId)) };
 };

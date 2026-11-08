@@ -37,7 +37,7 @@
 		<section class="rounded-lg border border-neutral-200 p-4">
 			<h2 class="mb-1 text-sm font-semibold uppercase text-neutral-500">Your call time</h2>
 			{#if v.callTime}<p class="text-xl font-semibold">{v.callTime}</p>{/if}
-			{#each v.dayCalls as c (c.date)}
+			{#each v.dayCalls as c (c.dayId)}
 				<p>{c.dayLabel} ({c.date}): <span class="font-semibold">{c.callTime}</span></p>
 			{/each}
 		</section>

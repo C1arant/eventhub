@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import {
 	assignmentDayCalls, assignments, eventDays, events, files, guestLinks, people, rosItems
@@ -42,21 +43,21 @@ function setup(liveAccess = true) {
 
 describe('guestView', () => {
 	it('shows event info, own call times, contact and own files', () => {
-		const { db, actor, contact } = setup();
-		const v = guestView(db, actor);
+		const { db, actor, contact, token, d2 } = setup();
+		const v = guestView(db, actor, token);
 		expect(v.eventName).toBe('Summer Fest');
 		expect(v.venue).toBe('The Hall');
 		expect(v.address).toBe('1 High St, Town');
 		expect(v.days.map((d) => d.label)).toEqual(['Friday', 'Saturday']);
 		expect(v.callTime).toBe('16:00');
-		expect(v.dayCalls).toEqual([{ dayLabel: 'Saturday', date: '2099-06-02', callTime: '17:00' }]);
+		expect(v.dayCalls).toEqual([{ dayId: d2.id, dayLabel: 'Saturday', date: '2099-06-02', callTime: '17:00' }]);
 		expect(v.contact).toEqual({ name: 'Casey Contact', phone: contact.phone });
 		expect(v.files.map((f) => f.name)).toEqual(['mine.pdf']);
 	});
 
 	it('isolation: no other person phone/email/needs/notes, no department notes', () => {
-		const { db, actor, contact } = setup();
-		const s = JSON.stringify(guestView(db, actor));
+		const { db, actor, contact, token } = setup();
+		const s = JSON.stringify(guestView(db, actor, token));
 		expect(s).toContain(contact.phone);
 		for (const n of [2, 4]) {
 			for (const k of [`07000-PHONE-${n}`, `p${n}@secret.test`, `NEEDS-${n}`, `NOTES-${n}`]) expect(s).not.toContain(k);
@@ -72,8 +73,8 @@ describe('guestView', () => {
 	});
 
 	it('mySlots match whole names case-insensitively; Sam does not match Samantha', () => {
-		const { db, actor } = setup();
-		const v = guestView(db, actor);
+		const { db, actor, token } = setup();
+		const v = guestView(db, actor, token);
 		expect(v.mySlots.map((s) => s.title)).toEqual(['Sam Set', 'Finale']);
 		expect(Object.keys(v.mySlots[0]).sort()).toEqual(['clock', 'dayLabel', 'dayOffset', 'durationMin', 'title', 'type']);
 		expect(v.mySlots[0].durationMin).toBe(10);
@@ -86,23 +87,28 @@ describe('guestView', () => {
 
 	it('liveDays is empty when liveAccess is false, else lists event day ids', () => {
 		const off = setup(false);
-		expect(guestView(off.db, off.actor).liveDays).toEqual([]);
+		expect(guestView(off.db, off.actor, off.token).liveDays).toEqual([]);
 		const on = setup(true);
-		expect(guestView(on.db, on.actor).liveDays).toEqual([on.d1.id, on.d2.id]);
+		expect(guestView(on.db, on.actor, on.token).liveDays).toEqual([on.d1.id, on.d2.id]);
+	});
+
+	it('each link shows only its own contact; a link without one shows null', () => {
+		const { db, actor, aGuest, contact, rando, token } = setup();
+		const t2 = createGuestLink(db, aGuest.id, { liveAccess: true, contactPersonId: rando.id });
+		const t3 = createGuestLink(db, aGuest.id, { liveAccess: true });
+		expect(guestView(db, actor, token).contact?.name).toBe(contact.name);
+		expect(guestView(db, actor, t2).contact?.name).toBe('Rando');
+		expect(JSON.stringify(guestView(db, actor, t2))).not.toContain(contact.phone);
+		expect(guestView(db, actor, t3).contact).toBeNull();
+		expect(guestView(db, actor, 'not-a-link').contact).toBeNull();
 	});
 
 	it('no contact when none set; contact outside the event is not shown', () => {
-		const { db, actor, aGuest, contact } = setup();
+		const { db, actor, contact, token } = setup();
 		db.update(guestLinks).set({ contactPersonId: null }).run();
-		expect(guestView(db, actor).contact).toBeNull();
-		db.delete(assignments).where(eqPerson(contact.id)).run();
+		expect(guestView(db, actor, token).contact).toBeNull();
+		db.delete(assignments).where(eq(assignments.personId, contact.id)).run();
 		db.update(guestLinks).set({ contactPersonId: contact.id }).run();
-		expect(guestView(db, actor).contact).toBeNull();
-		void aGuest;
+		expect(guestView(db, actor, token).contact).toBeNull();
 	});
 });
-
-import { eq } from 'drizzle-orm';
-function eqPerson(id: number) {
-	return eq(assignments.personId, id);
-}

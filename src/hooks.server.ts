@@ -53,8 +53,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const response = await resolve(event);
 	response.headers.set('x-request-id', event.locals.requestId);
+	applyTokenPathHeaders(path, response.headers);
 	return response;
 };
+
+/** Capability-token pages: never leak the URL via Referer, never cache. */
+export function applyTokenPathHeaders(path: string, headers: Headers): void {
+	if (path.startsWith('/g/') || path.startsWith('/display/')) {
+		headers.set('Referrer-Policy', 'no-referrer');
+		headers.set('Cache-Control', 'no-store');
+	}
+}
 
 /** Never log capability tokens that live in the path. */
 export function redactPath(path: string): string {
