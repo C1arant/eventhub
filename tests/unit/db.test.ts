@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openDb } from '../../src/lib/server/db';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import { hashToken, newToken } from '../../src/lib/server/util/tokens';
 
@@ -33,6 +36,17 @@ describe('db', () => {
 			.prepare("SELECT ref_id FROM search_index WHERE search_index MATCH 'stage'")
 			.all();
 		expect(rows).toHaveLength(1);
+	});
+
+	it('openDb throws a clear error when MIGRATIONS_DIR is missing', () => {
+		const prev = process.env.MIGRATIONS_DIR;
+		process.env.MIGRATIONS_DIR = join(tmpdir(), 'eventhub-no-such-migrations');
+		try {
+			expect(() => openDb(join(tmpdir(), 'unused.db'))).toThrow(/MIGRATIONS_DIR/);
+		} finally {
+			if (prev === undefined) delete process.env.MIGRATIONS_DIR;
+			else process.env.MIGRATIONS_DIR = prev;
+		}
 	});
 
 	it('tokens are base64url and hash is sha256 hex', () => {
