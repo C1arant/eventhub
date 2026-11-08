@@ -1,4 +1,4 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { getDb } from '#lib/server/db/index.js';
 import {
 	addDay, dayInput, deleteDay, deleteEvent, eventInput, getDay, listDays, updateDay, updateEvent
@@ -6,15 +6,21 @@ import {
 import { deleteEventFiles } from '#lib/server/files.js';
 import { fieldErrors, formObject } from '#lib/server/forms.js';
 import { requireActor } from '#lib/server/guard.js';
+import { notifyLive } from '#lib/server/live/store.js';
 import { saveAsTemplate, TemplateError } from '#lib/server/templates/index.js';
 import { z } from 'zod';
 
 const eid = (p: { id: string }) => Number(p.id);
 
-export const load = ({ locals, params }) => ({
-	days: listDays(getDb(), eid(params)),
-	canTemplate: locals.actor.kind === 'owner'
-});
+export const load = ({ locals, params }) => {
+	const id = eid(params);
+	if (!Number.isInteger(id) || id < 1) error(404, 'Event not found');
+	requireActor(locals, 'event:view', { eventId: id });
+	return {
+		days: listDays(getDb(), id),
+		canTemplate: locals.actor.kind === 'owner'
+	};
+};
 
 export const actions = {
 	update: async ({ locals, params, request }) => {
@@ -64,6 +70,7 @@ export const actions = {
 		const parsed = dayInput.safeParse(values);
 		if (!parsed.success) return fail(400, { form: `day${dayId}`, errors: fieldErrors(parsed.error), values });
 		updateDay(getDb(), dayId, parsed.data);
+		notifyLive(getDb(), dayId); // a changed start time shifts every planned clock
 		return { form: `day${dayId}`, saved: true };
 	},
 	deleteDay: async ({ locals, params, request }) => {

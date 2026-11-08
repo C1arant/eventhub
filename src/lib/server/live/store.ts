@@ -56,9 +56,25 @@ export function getLive(db: DB, dayId: number): LiveState {
 	return readState(db, dayId);
 }
 
+/** Run-of-show or day edits while a show is on: push the fresh snapshot to viewers. No-op when idle or the day is gone. */
+export function notifyLive(db: DB, dayId: number, now: number = Date.now()): void {
+	if (readState(db, dayId).status === 'idle') return;
+	safePublish(db, dayId, now);
+}
+
+/** Rehearsal reset: forget this day's live state and log, then tell viewers it is idle again (version restarts at 0). */
+export function resetLive(db: DB, dayId: number, now: number = Date.now()): void {
+	db.transaction((tx) => {
+		tx.delete(liveState).where(eq(liveState.dayId, dayId)).run();
+		tx.delete(liveLog).where(eq(liveLog.dayId, dayId)).run();
+	});
+	safePublish(db, dayId, now);
+}
+
 export function dispatch(db: DB, dayId: number, action: LiveAction, clientVersion: number, now: number = Date.now()): DispatchResult {
 	const result = db.transaction((tx): DispatchResult => {
 		const state = readState(tx, dayId);
+		if (!tx.select({ id: eventDays.id }).from(eventDays).where(eq(eventDays.id, dayId)).get()) return { ok: false, reason: 'invalid', state };
 		if (clientVersion !== state.version) return { ok: false, reason: 'conflict', state };
 		let items = itemRows(tx, dayId);
 		let logAction: string = action.type;

@@ -7,7 +7,7 @@ import { liveLog } from '../../src/lib/server/db/schema';
 import { createTestDb } from '../../src/lib/server/db/test-db';
 import { createEvent, eventInput, listDays } from '../../src/lib/server/events';
 import { subscribe } from '../../src/lib/server/live/hub';
-import { deleteItemLive, dispatch, getLive, liveSnapshot, report } from '../../src/lib/server/live/store';
+import { deleteItemLive, dispatch, getLive, liveSnapshot, notifyLive, report, resetLive } from '../../src/lib/server/live/store';
 import { addItem, listItems, rosItemInput } from '../../src/lib/server/ros';
 
 type D = ReturnType<typeof createTestDb>;
@@ -233,5 +233,46 @@ describe('live store', () => {
 		expect(getLive(db, dayId).version).toBe(1);
 		expect(go(db, dayId, 'insertQuickItem', T0, { title: '  Trim me ', durationSec: 60 }).ok).toBe(true);
 		expect(listItems(db, dayId)[1].title).toBe('Trim me');
+	});
+});
+
+describe('notifyLive / resetLive', () => {
+	it('notifyLive publishes for a running day and not for idle', () => {
+		const db = createTestDb();
+		const { dayId } = mk(db);
+		const got: string[] = [];
+		const un = subscribe(dayId, (d) => got.push(d));
+		notifyLive(db, dayId, T0);
+		expect(got).toHaveLength(0);
+		go(db, dayId, 'start');
+		got.length = 0;
+		notifyLive(db, dayId, T0);
+		expect(got).toHaveLength(1);
+		expect(JSON.parse(got[0]).state.status).toBe('running');
+		un();
+	});
+
+	it('resetLive clears state and log, publishes idle, and the day can be started again', () => {
+		const db = createTestDb();
+		const { dayId } = mk(db);
+		const other = mk(db);
+		go(db, dayId, 'start');
+		go(db, dayId, 'next');
+		go(db, other.dayId, 'start');
+		const got: string[] = [];
+		const un = subscribe(dayId, (d) => got.push(d));
+		resetLive(db, dayId, T0);
+		un();
+		expect(getLive(db, dayId)).toMatchObject({ status: 'idle', version: 0 });
+		expect(db.select().from(liveLog).all().filter((r) => r.dayId === dayId)).toHaveLength(0);
+		expect(getLive(db, other.dayId).status).toBe('running');
+		expect(got).toHaveLength(1);
+		expect(JSON.parse(got[0]).state).toMatchObject({ status: 'idle', version: 0 });
+		expect(go(db, dayId, 'start')).toMatchObject({ ok: true });
+	});
+
+	it('dispatch on a missing day is invalid, not empty', () => {
+		const db = createTestDb();
+		expect(dispatch(db, 99999, { type: 'start' }, 0, T0)).toMatchObject({ ok: false, reason: 'invalid' });
 	});
 });
